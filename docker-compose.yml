@@ -1,0 +1,14 @@
+services:
+  beacon-api:
+    build: .
+    container_name: beacon-api
+    restart: unless-stopped
+    environment:
+      BEACON_API_KEY: ${BEACON_API_KEY}
+      NEXTCLOUD_CALDAV_URL: ${NEXTCLOUD_CALDAV_URL}
+      NEXTCLOUD_USERNAME: ${NEXTCLOUD_USERNAME}
+      NEXTCLOUD_APP_PASSWORD: ${NEXTCLOUD_APP_PASSWORD}
+      BEACON_TIMEZONE: ${BEACON_TIMEZONE:-America/Chicago}
+      BEACON_CALENDARS: ${BEACON_CALENDARS:-theater,school,personal}
+    ports:
+      - "8000:8000"
