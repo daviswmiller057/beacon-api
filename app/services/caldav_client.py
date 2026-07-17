@@ -11,11 +11,17 @@ class CalDAVService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def _to_datetime(self, value: datetime | date, timezone: ZoneInfo) -> datetime:
+    def _to_datetime(
+        self,
+        value: datetime | date,
+        timezone: ZoneInfo,
+    ) -> datetime:
         if isinstance(value, datetime):
             if value.tzinfo is None:
                 return value.replace(tzinfo=timezone)
-            return value
+
+            return value.astimezone(timezone)
+
         return datetime.combine(value, time.min, tzinfo=timezone)
 
     def fetch_busy_intervals(
@@ -25,7 +31,12 @@ class CalDAVService:
         calendar_names: list[str] | None = None,
     ) -> list[BusyInterval]:
         timezone = ZoneInfo(self.settings.beacon_timezone)
-        wanted = set(calendar_names or self.settings.calendar_names)
+
+        wanted = {
+            name.strip().casefold()
+            for name in (calendar_names or self.settings.calendar_names)
+        }
+
         intervals: list[BusyInterval] = []
 
         client = caldav.DAVClient(
@@ -38,8 +49,9 @@ class CalDAVService:
         calendars = principal.calendars()
 
         for calendar in calendars:
-            name = (calendar.name or "").strip()
-            if name not in wanted:
+            name = (calendar.get_display_name() or "").strip()
+
+            if name.casefold() not in wanted:
                 continue
 
             events = calendar.search(
@@ -50,10 +62,27 @@ class CalDAVService:
             )
 
             for event in events:
-                vevent = event.vobject_instance.vevent
-                event_start = self._to_datetime(vevent.dtstart.value, timezone)
-                event_end = self._to_datetime(vevent.dtend.value, timezone)
-                title = getattr(getattr(vevent, "summary", None), "value", None)
+                component = event.icalendar_component
+
+                if component is None or component.name != "VEVENT":
+                    continue
+
+                event_start = self._to_datetime(
+                    component.decoded("DTSTART"),
+                    timezone,
+                )
+
+                if "DTEND" in component:
+                    event_end = self._to_datetime(
+                        component.decoded("DTEND"),
+                        timezone,
+                    )
+                elif "DURATION" in component:
+                    event_end = event_start + component.decoded("DURATION")
+                else:
+                    event_end = event_start
+
+                title = str(component.get("SUMMARY", "")) or None
 
                 if event_end <= start or event_start >= end:
                     continue
