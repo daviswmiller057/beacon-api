@@ -1,54 +1,111 @@
-# Beacon API
+# Beacon
 
-Deterministic backend services for Beacon.
+## Purpose
 
-## Current endpoints
+Beacon is my attempt to build a self-hosted executive function operating system.
 
-- `GET /health`
-- `POST /v1/availability`
-- Interactive API docs: `/docs`
+The goal is to reduce the amount of mental bookkeeping required to manage everyday life by coordinating tasks, calendars, reminders, and context.
 
-## Start
+Beacon is not intended to make decisions for me.
 
-```bash
-cp .env.example .env
-nano .env
-docker compose up -d --build
-```
+Instead, it should surface information, automate deterministic workflows, and reduce cognitive load while leaving important decisions to me.
 
-Test health:
+---
 
-```bash
-curl http://localhost:8000/health
-```
+# Philosophy
 
-Test availability:
+## AI interprets.
 
-```bash
-curl -X POST http://localhost:8000/v1/availability \
-  -H "Content-Type: application/json" \
-  -H "X-Beacon-API-Key: replace-with-your-secret" \
-  -d '{
-    "earliest_iso": "2026-07-17T16:00:00-05:00",
-    "deadline_iso": "2026-07-20T22:00:00-05:00",
-    "duration_minutes": 60,
-    "buffer_before_minutes": 15,
-    "buffer_after_minutes": 15,
-    "max_options": 3
-  }'
-```
+LLMs are used to understand natural language and convert it into structured data.
 
-## n8n
+## Deterministic systems execute.
 
-Use an HTTP Request node:
+Scheduling, prioritization, conflict detection, reminders, and business logic should be deterministic and testable.
 
-- Method: `POST`
-- URL: `http://beacon-api:8000/v1/availability` when both containers share a Docker network
-- Header: `X-Beacon-API-Key`
-- JSON body: the availability request
+---
 
-## Notes
+# Current Architecture
 
-Use a Nextcloud app password rather than your main account password.
+User
+    ↓
+Gemini
+    ↓
+Structured JSON
+    ↓
+Beacon API (FastAPI)
+    ↓
+Services
+    • Availability
+    • CalDAV
+    • Scheduler (planned)
+    ↓
+n8n
+    ↓
+Vikunja
+Nextcloud
+Home Assistant
 
-Calendar matching currently uses the displayed Nextcloud calendar name. Adjust `BEACON_CALENDARS` if your display names differ.
+---
+
+# Current Status
+
+## Completed
+
+- [x] FastAPI backend
+- [x] Docker deployment
+- [x] API authentication
+- [x] CalDAV integration
+- [x] Availability engine
+- [x] Ranked availability options
+
+## In Progress
+
+- [ ] Intelligent scheduling
+
+## Planned
+
+- [ ] Vikunja integration
+- [ ] Automatic rescheduling
+- [ ] Context registry
+- [ ] Daily brief
+- [ ] Home Assistant integration
+
+---
+
+# Repository Structure
+
+app/
+    api/
+        API routes
+
+    services/
+        Business logic
+
+    models.py
+        Shared Pydantic models
+
+    config.py
+        Configuration
+
+---
+
+# Design Rules
+
+- Services should have one responsibility.
+- AI should never directly modify user data.
+- Beacon should remain provider-agnostic.
+- Everything should be self-hostable when practical.
+- Business logic belongs in Python, not n8n.
+
+---
+
+# Development Notes
+
+Availability Engine
+- Reads calendars through CalDAV.
+- Produces busy intervals.
+- Computes available openings.
+- Returns ranked availability.
+
+Next Feature
+- Scheduler service.
