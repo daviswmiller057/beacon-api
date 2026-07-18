@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     nextcloud_app_password: str
     beacon_timezone: str = "America/Chicago"
     beacon_calendars: str = "theater,school,personal"
+    vikunja_api_url: str
+    vikunja_api_token: str
+    beacon_schedule_calendar: str = "personal"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
