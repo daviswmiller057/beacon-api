@@ -18,13 +18,14 @@ Any exception inside the route's integration/build block maps to `502` with `Cal
 
 ## `POST /v1/schedule/task/{task_id}`
 
-Requires API key. `task_id` is an integer. Body: `ScheduleTaskRequest`. Success `200`: `ScheduleTaskResponse` with:
+Requires API key. `task_id` is an integer. Body: `ScheduleTaskRequest`. Success `200`: `ScheduleTaskResponse` with explicit status:
 
-- `scheduled`: new event created;
-- `recommended`: `create_event=false`, no existing event;
-- `already_scheduled`: marked event found and `already_scheduled=true`.
+- `NEW`: new event created;
+- `UNCHANGED`: existing normalized bounds match; no write;
+- `UPDATED`: existing resource updated in place;
+- `RECOMMENDATION_ONLY`: `create_event=false`; no write.
 
-All successes include the normalized task, `availability.options[0]` as `selected_option`, checked calendars, and busy-event count. Duplicate lookup occurs even when `create_event=false`.
+All successes include the normalized task, `availability.options[0]`, checked calendars, and busy-event count. `already_scheduled` remains for compatibility; clients should use `status`.
 
 | Status | Cause | Detail |
 |---|---|---|
@@ -32,9 +33,12 @@ All successes include the normalized task, `availability.options[0]` as `selecte
 | `409` | completed task | `Task <id> is already completed.` |
 | `422` | missing request/task deadline | `Task has no due date. Supply deadline_iso.` |
 | `409` | no availability | `No available work block found.` |
+| `409` | multiple marker matches | `Multiple Beacon events found for Vikunja task <id>.` |
+| `404` | missing/stale event during update | typed lifecycle detail |
 | `422` | caught `ValueError` | underlying message |
 | `502` | `VikunjaError` | client-generated message |
+| `502` | CalDAV update/integration error | typed service detail |
 | unchanged | explicit `HTTPException` | re-raised |
 | `502` | other caught exception | `Scheduling integration failed: <message>` |
 
-Pydantic/path/header validation precedes the route `try` and uses standard `422`. Settings and service construction also precede that `try`, so construction failure is not handled by its catch-all. CalDAV exceptions normally become `502`; CalDAV `ValueError` becomes `422`.
+Pydantic/path/header validation precedes route execution and uses standard `422`. Service construction is inside the mapped route block. CalDAV `ValueError` is `422`, missing/stale events are `404`, and integration/update failures are `502`.

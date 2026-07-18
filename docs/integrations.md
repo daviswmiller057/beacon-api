@@ -18,6 +18,8 @@ Only `VEVENT` is used. Datetimes are converted to Beacon timezone; naive values 
 
 `create_event` rejects `end <= start`, resolves a destination display name, and writes start, end, summary, and description. UID/href are returned when available.
 
-`find_task_event` searches one destination calendar and returns the first event whose description contains the exact, case-sensitive `Vikunja task ID: <id>`. It does not compare title, duration, priority, due date, or chosen slot. This marker is the only current linkage.
+`find_task_events` returns every matching resource in one destination calendar so the scheduler can reject ambiguous multiple matches. The compatibility `find_task_event` wrapper still returns the first result. Matching requires an exact, case-sensitive description line `Vikunja task ID: <id>`; task `42` cannot match task `420`. Busy retrieval uses the same helper during rescheduling.
+
+`update_event` reloads the resource, verifies its marker/UID and `DTEND`-based shape, replaces only `DTSTART`/`DTEND`, and calls the verified caldav 3.2.1 API `event.save(no_create=True, increase_seqno=False)`. UID, URL, calendar, summary, description, marker, alarms, sequence, and unrelated properties remain intact. `DURATION`-based resources are rejected without writing. Missing/stale resources and update failures use distinct typed exceptions.
 
 Never expose `BEACON_API_KEY`, `VIKUNJA_API_TOKEN`, `NEXTCLOUD_APP_PASSWORD`, `.env` contents, or private endpoints.

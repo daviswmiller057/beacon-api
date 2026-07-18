@@ -30,7 +30,7 @@ There is no configured formatter, linter, type checker, migration tool, or CI wo
 ## Change workflow
 
 1. Read models, affected routes/services, and docs before editing.
-2. Preserve the boundary: `find_slot` returns availability; route code owns selection/idempotency/creation.
+2. Preserve boundaries: `find_slot` returns availability; service-level `schedule_task` owns lifecycle decisions; routes orchestrate and map errors.
 3. Add tests, using fakes/mocks rather than live integration writes.
 4. Run tests and compilation.
 5. Review the diff for secrets and unintended behavior; update docs with contracts.

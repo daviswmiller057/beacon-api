@@ -14,7 +14,7 @@
 
 ## ADR-004: `find_slot` scheduler boundary
 
-**Status:** Accepted. `SchedulerService.find_slot(task, request)` validates and returns availability; the route owns option selection and side effects. There is no service `schedule_task()`.
+**Status:** Superseded in part by the work-block lifecycle feature. `find_slot` remains the availability boundary. A new service-level `schedule_task` owns deterministic lifecycle decisions so the FastAPI route remains thin.
 
 ## ADR-005: Idempotent scheduling
 
@@ -27,3 +27,7 @@
 ## ADR-007: Inspect before changing
 
 **Status:** Accepted safeguard. Read current models, routes, services, configuration, and tests first. Contracts such as `options`, `already_scheduled`, and `find_slot` must come from code, not remembered conversation.
+
+## ADR-008: Update existing CalDAV resources in place
+
+**Status:** Accepted. When selected bounds change, reload and verify the linked resource, mutate only `DTSTART`/`DTEND`, and save with `no_create=True`. This preserves UID, marker, description, calendar, and linkage. Identical timezone-normalized bounds cause no write; ambiguity from multiple markers is a conflict rather than an arbitrary choice.

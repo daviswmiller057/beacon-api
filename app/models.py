@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -81,8 +82,15 @@ class CalendarEventResult(BaseModel):
     end_iso: datetime
 
 
+class ScheduleStatus(StrEnum):
+    NEW = "NEW"
+    UNCHANGED = "UNCHANGED"
+    UPDATED = "UPDATED"
+    RECOMMENDATION_ONLY = "RECOMMENDATION_ONLY"
+
+
 class ScheduleTaskResponse(BaseModel):
-    status: str
+    status: ScheduleStatus
     task: VikunjaTask
     selected_option: AvailabilityOption
     calendars_checked: list[str]

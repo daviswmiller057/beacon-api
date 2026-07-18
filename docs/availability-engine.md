@@ -19,6 +19,8 @@ flowchart TD
 
 Request bounds/events are converted using `astimezone(ZoneInfo(BEACON_TIMEZONE))`. Each busy interval becomes `(start - before, end + after)`. Intervals sort by start and merge when the next start is `<=` current end. Metadata is discarded during merging.
 
+For rescheduling, `SchedulerService` passes the existing task ID to CalDAV busy retrieval. Any event description containing that exact task marker is omitted before this engine receives intervals, preventing the current work block from blocking its own replacement slot. Public availability requests do not use this exclusion.
+
 Every date from earliest through deadline is considered. `daily_start`/`daily_end` split once on `:` and construct `time`; there is no model-level format validation. Each daily window is clamped to global bounds. Overnight/reversed windows produce no usable opening. The cursor begins at window start, and only the earliest exact-duration candidate in each free gap is emitted. Buffers expand busy time, not candidates.
 
 ## Exact scoring

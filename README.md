@@ -9,10 +9,10 @@ Implemented today:
 - public health check and API-key-protected business endpoints;
 - availability search across configured CalDAV calendars;
 - Vikunja task retrieval and deterministic slot ranking;
-- scheduling recommendations or Nextcloud event creation;
-- duplicate prevention using a Vikunja task marker in event descriptions.
+- scheduling recommendations, Nextcloud event creation, and in-place updates;
+- duplicate prevention and lifecycle linkage using a Vikunja task marker.
 
-The scheduler creates at most one work block and does not update or reschedule an existing block. See the [Roadmap](docs/roadmap.md) for implemented, planned, and speculative work.
+The scheduler creates at most one work block per task in the destination calendar. Later requests recalculate the best slot, ignore that block as a conflict, and update its existing CalDAV resource only when its bounds change. See the [Roadmap](docs/roadmap.md).
 
 ## Quick start
 

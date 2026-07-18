@@ -9,35 +9,33 @@ Planned/speculative items below are not implemented.
 - Vikunja task retrieval/normalization and `SchedulerService.find_slot`.
 - Route selection of the first ranked option.
 - Recommendation-only mode or one Nextcloud event creation.
-- Marker-based duplicate detection and `already_scheduled` response.
+- Marker-based duplicate detection, self-excluding recalculation, explicit statuses, and in-place work-block updates.
 
 ## Confirmed limitations
 
-- Existing events are detected but not updated.
-- Task changes do not reschedule blocks.
+- Task changes apply only on another scheduling request; no automatic watcher exists.
 - One work block per task/request; no task splitting.
 - Fixed heuristic scoring; task metadata does not affect it.
 - Broad duplicate-search window around the selected slot.
 - Calendar-description marker is the only linkage.
 - No persistent internal scheduling database.
-- No automated recovery for manually deleted, moved, or modified blocks.
+- No recovery outside a scheduling request for manually deleted, moved, or modified blocks.
 - Search/create is not atomic; concurrent requests can race.
 - Destination changes can produce marked events in multiple calendars.
 - Synchronous external I/O; no retry/backoff/circuit breaker.
 - No background jobs, subscriptions, audit trail, or observability layer.
-- Limited tests: only health success.
+- Mocked lifecycle coverage exists, but no live Nextcloud/Vikunja integration suite.
 
 ## Planned direction
 
-1. Unit-test scoring/interval edges and contract-test fake integrations.
-2. Define a user-approved update/rescheduling policy.
-3. Update linked blocks when that policy requires it.
-4. Reconcile missing/manually changed events and surface decisions.
+1. Expand scoring/interval edge tests and add opt-in integration tests.
+2. Define an automatic trigger and user-approved rescheduling policy.
+3. Reconcile missing/manually changed events and surface decisions.
 5. Reinforce editable-description linkage with durable identifiers/persistence.
 6. Improve concurrency/idempotency and narrow lookup semantics.
 7. Add secret-safe structured logging and operational checks.
 
-The proposed update flow is in [Scheduling](scheduling.md#future-update-lifecycle-not-implemented).
+The implemented request-driven update flow is in [Scheduling](scheduling.md).
 
 ## Speculative ideas
 

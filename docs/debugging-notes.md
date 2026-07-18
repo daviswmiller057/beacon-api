@@ -24,8 +24,10 @@ For no availability, check bound order, duration versus daily window, timezone, 
 
 ## Duplicates
 
-The exact case-sensitive substring is `Vikunja task ID: <id>`. Search is only in the destination calendar, between selected bounds minus/plus 365 days. Editing/removing the marker, moving calendars, or moving outside the window can allow duplicates. Any event containing the substring counts, regardless of title/time. Existing events are not verified or updated, and concurrent requests can race.
+The exact case-sensitive description line is `Vikunja task ID: <id>`. Search is only in the destination calendar, from resolved earliest minus 365 days through deadline plus 365 days. Editing/removing the marker, moving calendars, or moving outside the window can allow a new event. Multiple matches return `409`; Beacon does not choose arbitrarily.
+
+During rescheduling, marked busy intervals are excluded so the block cannot conflict with itself. Before update, Beacon reloads the resource and verifies marker/UID. A disappeared/stale event returns `404`; save failures return `502`. Equal instants with different timezone offsets are `UNCHANGED`.
 
 ## Coverage
 
-Inspection confirms one automated test: successful `GET /health`. Availability/scoring, authentication, scheduling, validation, client mapping, CalDAV operations, duplicates, and errors lack tests.
+Tests cover health plus new, duplicate/unchanged, updated, recommendation, completed, missing-deadline, no-availability, failure mapping, multiple matches, timezone equality, and UID/description-preserving updates. Live-server CalDAV compatibility remains untested automatically.

@@ -86,10 +86,14 @@ All models are in `app/models.py`. Datetimes use Pydantic ISO-8601 parsing/seria
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `status` | `str` | required | Produced: `scheduled`, `recommended`, `already_scheduled`; not enum-constrained. |
+| `status` | `ScheduleStatus` | required | `NEW`, `UNCHANGED`, `UPDATED`, or `RECOMMENDATION_ONLY`. |
 | `task` | `VikunjaTask` | required | Source task. |
 | `selected_option` | `AvailabilityOption` | required | Route-selected first option. |
 | `calendars_checked` | `list[str]` | required | From availability. |
 | `events_found` | `int` | required | From availability. |
 | `calendar_event` | `CalendarEventResult \| None` | `None` | Created/found event. |
-| `already_scheduled` | `bool` | `False` | Explicit duplicate indicator. |
+| `already_scheduled` | `bool` | `False` | Compatibility field; true when an existing event was found (`UNCHANGED`, `UPDATED`, or recommendation with an existing event). New clients should use `status`. |
+
+## `ScheduleStatus`
+
+`StrEnum` with exact JSON values: `NEW` (created), `UNCHANGED` (existing bounds already match), `UPDATED` (existing resource saved in place), and `RECOMMENDATION_ONLY` (no write requested).
