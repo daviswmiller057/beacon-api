@@ -88,3 +88,4 @@ class ScheduleTaskResponse(BaseModel):
     calendars_checked: list[str]
     events_found: int
     calendar_event: CalendarEventResult | None = None
+    already_scheduled: bool = False

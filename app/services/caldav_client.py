@@ -119,6 +119,80 @@ class CalDAVService:
 
         return intervals
 
+    def find_task_event(
+        self,
+        calendar_name: str,
+        task_id: int,
+        search_start: datetime,
+        search_end: datetime,
+    ) -> CalendarEventResult | None:
+        timezone = ZoneInfo(self.settings.beacon_timezone)
+        calendar, resolved_name = self._find_calendar(calendar_name)
+
+        marker = f"Vikunja task ID: {task_id}"
+
+        events = calendar.search(
+            start=search_start,
+            end=search_end,
+            event=True,
+            expand=True,
+        )
+
+        for event in events:
+            component = event.icalendar_component
+
+            if component is None or component.name != "VEVENT":
+                continue
+
+            description = str(component.get("DESCRIPTION", ""))
+
+            if marker not in description:
+                continue
+
+            event_start = self._to_datetime(
+                component.decoded("DTSTART"),
+                timezone,
+            )
+
+            if "DTEND" in component:
+                event_end = self._to_datetime(
+                    component.decoded("DTEND"),
+                    timezone,
+                )
+            elif "DURATION" in component:
+                event_end = (
+                    event_start
+                    + component.decoded("DURATION")
+                )
+            else:
+                event_end = event_start
+
+            title = (
+                str(component.get("SUMMARY", ""))
+                or f"Work Block — Task {task_id}"
+            )
+
+            uid = None
+
+            if component.get("UID"):
+                uid = str(component.get("UID"))
+
+            href = None
+
+            if getattr(event, "url", None):
+                href = str(event.url)
+
+            return CalendarEventResult(
+                uid=uid,
+                href=href,
+                calendar=resolved_name,
+                title=title,
+                start_iso=event_start,
+                end_iso=event_end,
+            )
+
+        return None
+
     def create_event(
         self,
         calendar_name: str,

@@ -12,4 +12,4 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(availability_router, prefix="/v1")
-app.include_router(scheduling_router, prefix="/v1")
+app.include_router(scheduling_router, prefix="/v1/schedule")
