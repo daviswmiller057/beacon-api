@@ -1,111 +1,54 @@
-# Beacon
+# Beacon API
 
-## Purpose
+Beacon API is a self-hosted FastAPI service that turns Vikunja tasks into deterministic, conflict-aware Nextcloud calendar work blocks. It reduces executive-function overhead without delegating important decisions to AI: AI may interpret intent, while testable Python services execute scheduling rules.
 
-Beacon is my attempt to build a self-hosted executive function operating system.
+## Current state
 
-The goal is to reduce the amount of mental bookkeeping required to manage everyday life by coordinating tasks, calendars, reminders, and context.
+Implemented today:
 
-Beacon is not intended to make decisions for me.
+- public health check and API-key-protected business endpoints;
+- availability search across configured CalDAV calendars;
+- Vikunja task retrieval and deterministic slot ranking;
+- scheduling recommendations or Nextcloud event creation;
+- duplicate prevention using a Vikunja task marker in event descriptions.
 
-Instead, it should surface information, automate deterministic workflows, and reduce cognitive load while leaving important decisions to me.
+The scheduler creates at most one work block and does not update or reschedule an existing block. See the [Roadmap](docs/roadmap.md) for implemented, planned, and speculative work.
 
----
+## Quick start
 
-# Philosophy
+Python 3.12 is the container runtime. Install dependencies and provide all required settings through environment variables or a local `.env` file:
 
-## AI interprets.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-LLMs are used to understand natural language and convert it into structured data.
+Required settings are `BEACON_API_KEY`, `NEXTCLOUD_CALDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_APP_PASSWORD`, `VIKUNJA_API_URL`, and `VIKUNJA_API_TOKEN`. Optional defaults are in [Development](docs/development.md). Never commit `.env`, credentials, tokens, or app passwords.
 
-## Deterministic systems execute.
+Docker Compose is also supported with `docker compose up --build`.
 
-Scheduling, prioritization, conflict detection, reminders, and business logic should be deterministic and testable.
+Endpoints:
 
----
+- `GET /health`
+- `POST /v1/availability`
+- `POST /v1/schedule/task/{task_id}`
 
-# Current Architecture
+Authenticated endpoints require `X-Beacon-API-Key`. See the [API reference](docs/api-reference.md).
 
-User
-    ↓
-Gemini
-    ↓
-Structured JSON
-    ↓
-Beacon API (FastAPI)
-    ↓
-Services
-    • Availability
-    • CalDAV
-    • Scheduler (planned)
-    ↓
-n8n
-    ↓
-Vikunja
-Nextcloud
-Home Assistant
+## Documentation
 
----
+Start at the [documentation index](docs/README.md), then read [Architecture](docs/architecture.md), [Scheduling](docs/scheduling.md), and [Availability engine](docs/availability-engine.md).
 
-# Current Status
+## Philosophy
 
-## Completed
+- AI interprets; deterministic systems execute.
+- Important decisions remain with the user.
+- Self-host where practical.
+- Reduce executive-function load.
+- Optimize for usefulness over novelty.
 
-- [x] FastAPI backend
-- [x] Docker deployment
-- [x] API authentication
-- [x] CalDAV integration
-- [x] Availability engine
-- [x] Ranked availability options
+## Tests
 
-## In Progress
-
-- [ ] Intelligent scheduling
-
-## Planned
-
-- [ ] Vikunja integration
-- [ ] Automatic rescheduling
-- [ ] Context registry
-- [ ] Daily brief
-- [ ] Home Assistant integration
-
----
-
-# Repository Structure
-
-app/
-    api/
-        API routes
-
-    services/
-        Business logic
-
-    models.py
-        Shared Pydantic models
-
-    config.py
-        Configuration
-
----
-
-# Design Rules
-
-- Services should have one responsibility.
-- AI should never directly modify user data.
-- Beacon should remain provider-agnostic.
-- Everything should be self-hostable when practical.
-- Business logic belongs in Python, not n8n.
-
----
-
-# Development Notes
-
-Availability Engine
-- Reads calendars through CalDAV.
-- Produces busy intervals.
-- Computes available openings.
-- Returns ranked availability.
-
-Next Feature
-- Scheduler service.
+Run `pytest`. Current automated coverage is limited to the health endpoint.
