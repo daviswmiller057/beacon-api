@@ -1,9 +1,10 @@
 # Beacon engineering documentation
 
-This directory records the implementation at commit `6df72d7`. Code is the source of truth. Deployment history identified as such is maintainer-provided context, not behavior inferred from code.
+This directory records the current implementation. Code is the source of truth. Deployment history identified as such is maintainer-provided context, not behavior inferred from code.
 
 - [Architecture](architecture.md): components and runtime boundaries.
 - [Scheduling](scheduling.md): exact task-to-calendar lifecycle.
+- [Daily Brief](daily-brief.md): read-only daily orchestration, prioritization, travel, weather, conflicts, and summaries.
 - [Availability engine](availability-engine.md): intervals, windows, scoring, sorting.
 - [Integrations](integrations.md): Vikunja and Nextcloud/CalDAV contracts.
 - [API reference](api-reference.md): endpoints, authentication, successes, errors.

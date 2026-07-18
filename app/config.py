@@ -1,5 +1,7 @@
 from functools import lru_cache
+from typing import Annotated
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +15,16 @@ class Settings(BaseSettings):
     vikunja_api_url: str
     vikunja_api_token: str
     beacon_schedule_calendar: str = "personal"
+    daily_brief_travel_enabled: bool = False
+    daily_brief_weather_enabled: bool = False
+    daily_brief_travel_buffer_minutes: Annotated[
+        int, Field(ge=0, le=180)
+    ] = 15
+    beacon_home_location: str | None = None
+    waze_region: str = "US"
+    home_assistant_url: str | None = None
+    home_assistant_token: str | None = None
+    home_assistant_weather_entity: str = "weather.home"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

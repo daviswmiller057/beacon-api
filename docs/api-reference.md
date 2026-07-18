@@ -42,3 +42,9 @@ All successes include the normalized task, `availability.options[0]`, checked ca
 | `502` | other caught exception | `Scheduling integration failed: <message>` |
 
 Pydantic/path/header validation precedes route execution and uses standard `422`. Service construction is inside the mapped route block. CalDAV `ValueError` is `422`, missing/stale events are `404`, and integration/update failures are `502`.
+
+## `GET /v1/brief/daily`
+
+Requires API key. Optional query parameter `date=YYYY-MM-DD`; omission uses today in `BEACON_TIMEZONE`. Success `200` returns `DailyBriefResponse`. Calendar, Vikunja, Waze, and Home Assistant operational failures normally produce typed warnings and partial `200` responses rather than failing the brief. Invalid query dates use FastAPI `422`; unexpected generation failures map to `502` with `Daily brief generation failed: <message>`.
+
+The endpoint is read-only. It does not schedule, update, delete, or create calendar/task records.

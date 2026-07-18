@@ -31,3 +31,9 @@ During rescheduling, marked busy intervals are excluded so the block cannot conf
 ## Coverage
 
 Tests cover health plus new, duplicate/unchanged, updated, recommendation, completed, missing-deadline, no-availability, failure mapping, multiple matches, timezone equality, and UID/description-preserving updates. Live-server CalDAV compatibility remains untested automatically.
+
+## Daily Brief
+
+An empty section plus warning is expected when a data source fails. Check warning `source`, `code`, and `message` before treating a partial `200` as complete. Travel requires `DAILY_BRIEF_TRAVEL_ENABLED=true` and non-empty `BEACON_HOME_LOCATION`; weather requires its enable flag, URL, token, and entity ID. Never log the Home Assistant token.
+
+Travel depends on free-text location resolution through an unofficial Waze Live Map client. Failures should appear as `TRAVEL_ESTIMATE_FAILED` or `SEQUENTIAL_TRAVEL_FAILED`, not abort the response. Date overrides use local midnight boundaries; inspect `timezone`, `date`, and `generated_at` when events/tasks appear on an adjacent UTC date.

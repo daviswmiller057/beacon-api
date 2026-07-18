@@ -11,6 +11,7 @@ Implemented today:
 - Vikunja task retrieval and deterministic slot ranking;
 - scheduling recommendations, Nextcloud event creation, and in-place updates;
 - duplicate prevention and lifecycle linkage using a Vikunja task marker.
+- a deterministic Daily Brief combining calendar, task, travel, weather, warning, and conflict data.
 
 The scheduler creates at most one work block per task in the destination calendar. Later requests recalculate the best slot, ignore that block as a conflict, and update its existing CalDAV resource only when its bounds change. See the [Roadmap](docs/roadmap.md).
 
@@ -34,6 +35,7 @@ Endpoints:
 - `GET /health`
 - `POST /v1/availability`
 - `POST /v1/schedule/task/{task_id}`
+- `GET /v1/brief/daily`
 
 Authenticated endpoints require `X-Beacon-API-Key`. See the [API reference](docs/api-reference.md).
 

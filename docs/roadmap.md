@@ -10,6 +10,7 @@ Planned/speculative items below are not implemented.
 - Route selection of the first ranked option.
 - Recommendation-only mode or one Nextcloud event creation.
 - Marker-based duplicate detection, self-excluding recalculation, explicit statuses, and in-place work-block updates.
+- Request-driven Daily Brief with calendar/work blocks, task prioritization, optional Waze travel, optional Home Assistant weather, conflicts, warnings, and deterministic summaries.
 
 ## Confirmed limitations
 
@@ -24,6 +25,7 @@ Planned/speculative items below are not implemented.
 - Destination changes can produce marked events in multiple calendars.
 - Synchronous external I/O; no retry/backoff/circuit breaker.
 - No background jobs, subscriptions, audit trail, or observability layer.
+- No automatic Daily Brief delivery, voice synthesis, Alexa, navigation, weather forecasting, or schedule repair.
 - Mocked lifecycle coverage exists, but no live Nextcloud/Vikunja integration suite.
 
 ## Planned direction
@@ -41,7 +43,7 @@ The implemented request-driven update flow is in [Scheduling](scheduling.md).
 
 - User-configurable deterministic scoring profiles.
 - Task splitting under explicit user-controlled rules.
-- Daily brief, context registry, reminders, Home Assistant/workflow integrations.
+- Context registry, reminders, and broader Home Assistant/workflow integrations.
 - AI interpretation upstream, producing validated structured requests.
 
 AI must not directly execute important mutations. AI interprets; deterministic systems execute; important decisions stay with the user; self-host where practical; reduce executive-function load; optimize for usefulness over novelty.

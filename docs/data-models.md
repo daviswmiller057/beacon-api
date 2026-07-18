@@ -97,3 +97,71 @@ All models are in `app/models.py`. Datetimes use Pydantic ISO-8601 parsing/seria
 ## `ScheduleStatus`
 
 `StrEnum` with exact JSON values: `NEW` (created), `UNCHANGED` (existing bounds already match), `UPDATED` (existing resource saved in place), and `RECOMMENDATION_ONLY` (no write requested).
+
+## Daily Brief models
+
+### `BriefCalendarEvent`
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `uid` | `str \| None` | `None` | CalDAV UID when present. |
+| `calendar` | `str` | required | Resolved display name. |
+| `title` | `str` | required | Summary or `Untitled event`. |
+| `description` | `str` | `""` | CalDAV description. |
+| `location` | `str \| None` | `None` | Trimmed calendar location. |
+| `start_iso` | `datetime` | required | Beacon-timezone-aware start. |
+| `end_iso` | `datetime` | required | Beacon-timezone-aware end. |
+| `all_day` | `bool` | `False` | Whether raw DTSTART was a date. |
+| `is_beacon_work_block` | `bool` | `False` | Exact task-marker classification. |
+| `vikunja_task_id` | `int \| None` | `None` | Parsed exact marker task ID. |
+
+### `DailyBriefCalendar`
+
+`events: list[BriefCalendarEvent]` contains ordinary events; `work_blocks: list[BriefCalendarEvent]` contains marked Beacon blocks. Both preserve chronological input order.
+
+### `DailyBriefTasks`
+
+`overdue` and `due_today` are `list[VikunjaTask]`; `highest_priority` is `VikunjaTask | None`. Completed tasks never appear.
+
+### `TravelEstimate`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `event_uid` | `str \| None` | Target event UID. |
+| `event_title` | `str` | Target title. |
+| `origin` | `str` | Route origin. |
+| `destination` | `str` | Route destination/event location. |
+| `duration_minutes` | `float` | Waze real-time minutes. |
+| `distance_kilometers` | `float` | Waze distance. |
+| `buffer_minutes` | `int` | Configured leave buffer. |
+| `leave_by` | `datetime` | Event start minus duration and buffer. |
+
+### `WeatherConditions`
+
+Fields are `entity_id: str`, `condition: str`, optional `temperature: float`, optional `temperature_unit: str`, optional `humidity: float`, and optional `observed_at: datetime`.
+
+### Warnings and conflicts
+
+`BriefWarning` contains `source: BriefWarningSource`, `code: str`, and `message: str`. Sources are `CALENDAR`, `VIKUNJA`, `WAZE`, and `HOME_ASSISTANT`.
+
+`BriefConflict` contains `type: BriefConflictType`, `message: str`, and `event_uids: list[str]` (default empty). Types are `OVERLAPPING_EVENTS`, `WORK_BLOCK_OVERLAP`, `INSUFFICIENT_TRAVEL_TIME`, and `LEAVE_BY_PASSED`.
+
+### `DailyBriefSummary`
+
+Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`, `due_today_task_count`, and `conflict_count`, plus optional `next_event` and `highest_priority_task` references.
+
+### `DailyBriefResponse`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `date` | `date` | Requested/default Beacon-local date. |
+| `timezone` | `str` | Configured IANA timezone. |
+| `generated_at` | `datetime` | Timezone-aware generation time. |
+| `calendar` | `DailyBriefCalendar` | Events and work blocks. |
+| `tasks` | `DailyBriefTasks` | Deterministic task groups/priority. |
+| `travel` | `list[TravelEstimate]` | Successful home-to-event estimates. |
+| `weather` | `WeatherConditions \| None` | Current HA state when enabled/available. |
+| `warnings` | `list[BriefWarning]` | Non-fatal source failures. |
+| `conflicts` | `list[BriefConflict]` | Detected informational conflicts. |
+| `summary` | `DailyBriefSummary` | Structured headline data. |
+| `spoken_summary` | `str` | Deterministic text, not synthesized audio. |

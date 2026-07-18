@@ -15,6 +15,14 @@ The image targets Python 3.12. Install `requirements.txt`, then run `uvicorn app
 | `VIKUNJA_API_URL` | yes | — | Vikunja base; deployment uses LAN endpoint. |
 | `VIKUNJA_API_TOKEN` | yes | — | Vikunja bearer token. |
 | `BEACON_SCHEDULE_CALENDAR` | no | `personal` | Default destination. |
+| `DAILY_BRIEF_TRAVEL_ENABLED` | no | `false` | Enable Waze estimates. |
+| `DAILY_BRIEF_WEATHER_ENABLED` | no | `false` | Enable Home Assistant weather. |
+| `DAILY_BRIEF_TRAVEL_BUFFER_MINUTES` | no | `15` | Leave-by buffer, `0..180`. |
+| `BEACON_HOME_LOCATION` | conditional | — | Free-text Waze origin when travel is enabled. |
+| `WAZE_REGION` | no | `US` | Waze route region. |
+| `HOME_ASSISTANT_URL` | conditional | — | Home Assistant base URL. |
+| `HOME_ASSISTANT_TOKEN` | conditional | — | Home Assistant bearer token. |
+| `HOME_ASSISTANT_WEATHER_ENTITY` | no | `weather.home` | Weather entity ID. |
 
 Settings optionally load `.env` and ignore unknown values. Never print/commit real values. `get_settings()` caches the first instance; tests that alter environment after access must clear its cache or isolate the process.
 
@@ -38,7 +46,7 @@ There is no configured formatter, linter, type checker, migration tool, or CI wo
 ```text
 app/
   api/            FastAPI routes
-  services/       availability, scheduling, Vikunja, CalDAV
+  services/       availability, scheduling, Daily Brief, integrations
   config.py       settings
   main.py         application construction
   models.py       Pydantic models

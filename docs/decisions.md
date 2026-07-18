@@ -31,3 +31,7 @@
 ## ADR-008: Update existing CalDAV resources in place
 
 **Status:** Accepted. When selected bounds change, reload and verify the linked resource, mutate only `DTSTART`/`DTEND`, and save with `no_create=True`. This preserves UID, marker, description, calendar, and linkage. Identical timezone-normalized bounds cause no write; ambiguity from multiple markers is a conflict rather than an arbitrary choice.
+
+## ADR-009: Daily Brief uses direct optional clients and partial responses
+
+**Status:** Accepted. `DailyBriefService` consumes Beacon models from concrete CalDAV, Vikunja, Waze, and Home Assistant clients. No generic provider abstraction or AI is introduced. Source outages become typed warnings and partial responses because one unavailable integration should not erase useful data from the others. Waze's unofficial Live Map dependency is isolated behind `WazeClient`.

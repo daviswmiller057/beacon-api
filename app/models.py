@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
@@ -97,3 +97,97 @@ class ScheduleTaskResponse(BaseModel):
     events_found: int
     calendar_event: CalendarEventResult | None = None
     already_scheduled: bool = False
+
+
+class BriefCalendarEvent(BaseModel):
+    uid: str | None = None
+    calendar: str
+    title: str
+    description: str = ""
+    location: str | None = None
+    start_iso: datetime
+    end_iso: datetime
+    all_day: bool = False
+    is_beacon_work_block: bool = False
+    vikunja_task_id: int | None = None
+
+
+class DailyBriefCalendar(BaseModel):
+    events: list[BriefCalendarEvent]
+    work_blocks: list[BriefCalendarEvent]
+
+
+class DailyBriefTasks(BaseModel):
+    overdue: list[VikunjaTask]
+    due_today: list[VikunjaTask]
+    highest_priority: VikunjaTask | None = None
+
+
+class TravelEstimate(BaseModel):
+    event_uid: str | None = None
+    event_title: str
+    origin: str
+    destination: str
+    duration_minutes: float
+    distance_kilometers: float
+    buffer_minutes: int
+    leave_by: datetime
+
+
+class WeatherConditions(BaseModel):
+    entity_id: str
+    condition: str
+    temperature: float | None = None
+    temperature_unit: str | None = None
+    humidity: float | None = None
+    observed_at: datetime | None = None
+
+
+class BriefWarningSource(StrEnum):
+    CALENDAR = "CALENDAR"
+    VIKUNJA = "VIKUNJA"
+    WAZE = "WAZE"
+    HOME_ASSISTANT = "HOME_ASSISTANT"
+
+
+class BriefWarning(BaseModel):
+    source: BriefWarningSource
+    code: str
+    message: str
+
+
+class BriefConflictType(StrEnum):
+    OVERLAPPING_EVENTS = "OVERLAPPING_EVENTS"
+    WORK_BLOCK_OVERLAP = "WORK_BLOCK_OVERLAP"
+    INSUFFICIENT_TRAVEL_TIME = "INSUFFICIENT_TRAVEL_TIME"
+    LEAVE_BY_PASSED = "LEAVE_BY_PASSED"
+
+
+class BriefConflict(BaseModel):
+    type: BriefConflictType
+    message: str
+    event_uids: list[str] = Field(default_factory=list)
+
+
+class DailyBriefSummary(BaseModel):
+    event_count: int
+    work_block_count: int
+    overdue_task_count: int
+    due_today_task_count: int
+    conflict_count: int
+    next_event: BriefCalendarEvent | None = None
+    highest_priority_task: VikunjaTask | None = None
+
+
+class DailyBriefResponse(BaseModel):
+    date: date
+    timezone: str
+    generated_at: datetime
+    calendar: DailyBriefCalendar
+    tasks: DailyBriefTasks
+    travel: list[TravelEstimate]
+    weather: WeatherConditions | None = None
+    warnings: list[BriefWarning]
+    conflicts: list[BriefConflict]
+    summary: DailyBriefSummary
+    spoken_summary: str

@@ -50,8 +50,40 @@ class VikunjaClient:
                 f"{response.text[:300]}"
             ) from exc
 
-        task = response.json()
+        return self._to_task(response.json())
 
+    def list_tasks(self) -> list[VikunjaTask]:
+        tasks: list[VikunjaTask] = []
+        page = 1
+        while True:
+            try:
+                response = httpx.get(
+                    f"{self.base_url}/tasks",
+                    headers=self.headers,
+                    params={"page": page, "per_page": 100},
+                    timeout=15.0,
+                )
+            except httpx.RequestError as exc:
+                raise VikunjaError(
+                    f"Could not connect to Vikunja: {exc}"
+                ) from exc
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise VikunjaError(
+                    f"Vikunja returned HTTP {response.status_code}: "
+                    f"{response.text[:300]}"
+                ) from exc
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise VikunjaError("Vikunja task list response was not a list")
+            tasks.extend(self._to_task(item) for item in payload)
+            if len(payload) < 100:
+                break
+            page += 1
+        return tasks
+
+    def _to_task(self, task: dict[str, Any]) -> VikunjaTask:
         return VikunjaTask(
             id=task["id"],
             title=task["title"],

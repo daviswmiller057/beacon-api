@@ -7,7 +7,7 @@ import caldav
 from caldav.lib import error as caldav_error
 
 from app.config import get_settings
-from app.models import BusyInterval, CalendarEventResult
+from app.models import BriefCalendarEvent, BusyInterval, CalendarEventResult
 
 
 class CalDAVError(RuntimeError):
@@ -85,6 +85,17 @@ class CalDAVService:
         marker = f"Vikunja task ID: {task_id}"
         return marker in description.splitlines()
 
+    @staticmethod
+    def _task_id_from_description(description: str) -> int | None:
+        prefix = "Vikunja task ID: "
+        for line in description.splitlines():
+            if not line.startswith(prefix):
+                continue
+            value = line.removeprefix(prefix)
+            if value.isdigit():
+                return int(value)
+        return None
+
     def _event_result(
         self,
         event: Any,
@@ -153,6 +164,71 @@ class CalDAVService:
                     )
                 )
         return intervals
+
+    def fetch_calendar_events(
+        self,
+        start: datetime,
+        end: datetime,
+        calendar_names: list[str] | None = None,
+    ) -> list[BriefCalendarEvent]:
+        timezone = ZoneInfo(self.settings.beacon_timezone)
+        wanted = {
+            name.strip().casefold()
+            for name in (calendar_names or self.settings.calendar_names)
+        }
+        results: list[BriefCalendarEvent] = []
+        client = self._get_client()
+        principal = client.principal()
+
+        for calendar in principal.calendars():
+            name = (calendar.get_display_name() or "").strip()
+            if name.casefold() not in wanted:
+                continue
+            events = calendar.search(
+                start=start, end=end, event=True, expand=True
+            )
+            for event in events:
+                component = event.icalendar_component
+                if component is None or component.name != "VEVENT":
+                    continue
+                raw_start = component.decoded("DTSTART")
+                event_start, event_end = self._event_times(
+                    component, timezone
+                )
+                if event_end <= start or event_start >= end:
+                    continue
+                description = str(component.get("DESCRIPTION", ""))
+                task_id = self._task_id_from_description(description)
+                uid = (
+                    str(component.get("UID"))
+                    if component.get("UID")
+                    else None
+                )
+                location = str(component.get("LOCATION", "")).strip() or None
+                results.append(
+                    BriefCalendarEvent(
+                        uid=uid,
+                        calendar=name,
+                        title=str(component.get("SUMMARY", ""))
+                        or "Untitled event",
+                        description=description,
+                        location=location,
+                        start_iso=event_start,
+                        end_iso=event_end,
+                        all_day=not isinstance(raw_start, datetime),
+                        is_beacon_work_block=task_id is not None,
+                        vikunja_task_id=task_id,
+                    )
+                )
+        return sorted(
+            results,
+            key=lambda item: (
+                item.start_iso,
+                item.end_iso,
+                item.calendar.casefold(),
+                item.title.casefold(),
+            ),
+        )
 
     def find_task_events(
         self,

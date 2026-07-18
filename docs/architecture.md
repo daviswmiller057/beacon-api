@@ -2,7 +2,7 @@
 
 See [Scheduling](scheduling.md), [Integrations](integrations.md), [Data models](data-models.md), and [Decisions](decisions.md).
 
-`app.main:app` constructs FastAPI 0.116.1, advertises version `0.2.0`, and mounts three routers. Synchronous route functions construct services per request. `pydantic-settings` loads configuration and `get_settings()` caches it process-wide.
+`app.main:app` constructs FastAPI 0.116.1, advertises version `0.2.0`, and mounts four routers. Synchronous route functions construct services per request. `pydantic-settings` loads configuration and `get_settings()` caches it process-wide.
 
 ```mermaid
 flowchart LR
@@ -17,6 +17,12 @@ flowchart LR
     S --> C
     S --> E
     SR --> C
+    API --> DBR["daily brief router"]
+    DBR --> DBS["DailyBriefService"]
+    DBS --> C
+    DBS --> V
+    DBS --> HA["HomeAssistantClient"]
+    DBS --> W["WazeClient"]
     V -->|"Bearer token; LAN URL in deployment"| VS["Vikunja"]
     C -->|"username + app password"| NC["Nextcloud CalDAV"]
     CFG["cached Settings"] --> V
@@ -30,12 +36,16 @@ flowchart LR
 - `app/api/health.py`: public liveness response.
 - `app/api/availability.py`: authenticated availability orchestration and calendar-error mapping.
 - `app/api/scheduling.py`: thin task-retrieval/scheduler invocation and HTTP error mapping.
+- `app/api/daily_brief.py`: authenticated date query and Daily Brief invocation/error mapping.
 - `app/models.py`: Pydantic request, response, integration, and interval models.
 - `app/config.py`: environment settings and comma-separated calendar parsing.
 - `app/security.py`: exact API-key header comparison.
 - `app/services/availability.py`: deterministic interval and scoring logic.
 - `app/services/caldav_client.py`: calendar discovery, busy reads with task exclusion, duplicate search, in-place event writes.
 - `app/services/vikunja_client.py`: task retrieval and normalization.
+- `app/services/daily_brief.py`: read-only collection, prioritization, conflict detection, summaries, and graceful degradation.
+- `app/services/home_assistant_client.py`: weather entity normalization.
+- `app/services/waze_client.py`: direct Waze travel normalization.
 - `app/services/scheduler.py`: deterministic lifecycle orchestration; `find_slot` remains the availability boundary and `schedule_task` owns create/compare/update decisions.
 
 ## Boundaries and state
