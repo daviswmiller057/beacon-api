@@ -10,6 +10,8 @@ Implemented today:
 - public health check and API-key-protected business endpoints;
 - one top-level interaction endpoint for natural-language or pre-structured intent;
 - provider-neutral intake with Gemini structured output and deterministic action plans;
+- Vikunja task creation through deterministic intake execution;
+- a dependency-free interactive and one-shot terminal client;
 - top-level deterministic status and Daily Brief endpoints for automations;
 - availability search across configured CalDAV calendars;
 - Vikunja task retrieval and deterministic slot ranking;
@@ -73,9 +75,15 @@ curl -sS http://localhost:8000/interact \
 
 See the [Interaction guide](docs/interaction.md) and [API reference](docs/api-reference.md).
 
+For a terminal interface, configure `BEACON_API_URL` and `BEACON_API_KEY`, then
+run `python -m app.cli`. Interactive commands and one-shot usage are documented
+in [CLI usage](CLI_USAGE.md).
+
 ## Documentation
 
-Start at the [documentation index](docs/README.md), then read [Architecture](docs/architecture.md), [Scheduling](docs/scheduling.md), and [Availability engine](docs/availability-engine.md).
+Start at the [documentation index](docs/README.md). It routes terminal users,
+operators, API consumers, and contributors to the relevant guides. The current
+system review is in [Architecture review](ARCHITECTURE_REVIEW.md).
 
 ## Philosophy
 

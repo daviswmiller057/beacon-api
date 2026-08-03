@@ -43,8 +43,10 @@ flowchart LR
 
 For `Schedule lighting paperwork tomorrow`:
 
-1. The configured interpreter returns
-   `{"intent":"SCHEDULE_TASK","title":"Lighting paperwork","time_constraint":"tomorrow"}`.
+1. The configured interpreter returns a validated scheduling intent. Gemini may
+   preserve the phrase as
+   `{"intent":"SCHEDULE_TASK","title":"Lighting paperwork","time_constraint":"tomorrow"}`;
+   the rules interpreter resolves it directly into the equivalent `deadline`.
 2. Pydantic rejects the response unless it satisfies `StructuredIntent`.
 3. The planner converts `tomorrow` using Beacon's local date and produces two
    ordered actions: ensure/create the task, then schedule its work block.
