@@ -1,14 +1,40 @@
 # API reference
 
-The FastAPI application title is `Beacon API`, version `0.2.0`. See [Data models](data-models.md).
+The FastAPI application title is `Beacon API`, version `0.3.0`. See [Data models](data-models.md).
 
 ## Authentication
 
-Protected endpoints require `X-Beacon-API-Key`. Missing headers are FastAPI validation failures (normally `422`); incorrect values return `401` with `{"detail":"Invalid Beacon API key"}`. `/health` is public.
+Protected endpoints require `X-Beacon-API-Key`. Missing or incorrect values return
+`401` with `{"detail":"Invalid Beacon API key"}`. `/health` is public.
 
 ## `GET /health`
 
 Success `200`: `{"status":"ok","service":"beacon-api"}`.
+
+## `GET /status`
+
+Requires API key. Returns a secret-safe service/configuration snapshot: version,
+timezone, calendar names, schedule calendar, configured integration flags, and
+supported interaction modes. It does not contact external services; use `/brief`
+to observe current calendar/task availability.
+
+## `GET /brief`
+
+Requires API key. This is the automation-friendly alias for
+`GET /v1/brief/daily`, including the optional `date=YYYY-MM-DD` query parameter.
+
+## `POST /interact`
+
+Requires API key. Accepts `InteractRequest` with a natural-language `message`, a
+validated `intent`, or both. When both are supplied, `intent` is authoritative.
+Success returns `InteractResponse` containing `result`, the accepted structured
+intent, `actions_taken`, and either a full `brief` or `schedule` result.
+
+The local interpreter supports brief/status requests and scheduling a Vikunja
+task by title or ID, with optional `today`, `tomorrow`, and duration phrases.
+Unsupported intake is `400`; missing task is `404`; ambiguity, completed tasks,
+duplicate-marker ambiguity, and no availability are `409`; invalid bounds are
+`422`; upstream failures are `502`.
 
 ## `POST /v1/availability`
 

@@ -5,6 +5,7 @@ This directory records the current implementation. Code is the source of truth. 
 - [Architecture](architecture.md): components and runtime boundaries.
 - [Scheduling](scheduling.md): exact task-to-calendar lifecycle.
 - [Daily Brief](daily-brief.md): read-only daily orchestration, prioritization, travel, weather, conflicts, and summaries.
+- [Interaction](interaction.md): natural-language minimum and structured-intent boundary.
 - [Availability engine](availability-engine.md): intervals, windows, scoring, sorting.
 - [Integrations](integrations.md): Vikunja and Nextcloud/CalDAV contracts.
 - [API reference](api-reference.md): endpoints, authentication, successes, errors.
@@ -14,4 +15,7 @@ This directory records the current implementation. Code is the source of truth. 
 - [Debugging notes](debugging-notes.md): failure behavior and traps.
 - [Roadmap](roadmap.md): implemented, limited, planned, and speculative work.
 
-There is no internal database, background worker, AI runtime, n8n workflow, Home Assistant adapter, rescheduling engine, or persistent linkage table in this repository. The project philosophy is: AI interprets; deterministic systems execute; important decisions remain with the user; self-host where practical; reduce executive-function load; optimize for usefulness over novelty.
+There is no internal database, background worker, hosted AI runtime, n8n workflow,
+rescheduling daemon, or persistent linkage table in this repository. A narrow
+rule-based interpreter provides the minimum local interaction path, while
+pre-structured intent provides the boundary for a future Gemini/n8n adapter.

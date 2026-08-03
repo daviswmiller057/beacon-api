@@ -165,3 +165,22 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 | `conflicts` | `list[BriefConflict]` | Detected informational conflicts. |
 | `summary` | `DailyBriefSummary` | Structured headline data. |
 | `spoken_summary` | `str` | Deterministic text, not synthesized audio. |
+
+## Interaction models
+
+`IntentType` has `BRIEF` and `SCHEDULE_TASK`. `StructuredIntent` contains the
+action plus optional `task_id`, `task_title`, `target_date`, `duration_minutes`,
+and `create_event` (default `true`). Scheduling requires exactly one task ID or
+title; duration, when supplied, is `1..1440` minutes.
+
+`InteractRequest` accepts optional `message` (1..2000 characters) and optional
+`intent`, but at least one is required. A supplied intent is authoritative.
+
+`InteractionAction` contains `action`, `status`, optional `target`, and a free-form
+JSON `details` map. `InteractResponse` contains human-readable `result`, accepted
+`intent`, `actions_taken`, and exactly one populated typed result (`brief` or
+`schedule`) for current actions.
+
+`ServiceStatusResponse` contains the service state/version, timezone, calendar
+configuration, boolean integration configuration flags, and supported interaction
+modes. It intentionally contains no credentials or live integration payloads.

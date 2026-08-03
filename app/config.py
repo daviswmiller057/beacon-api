@@ -6,15 +6,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    beacon_api_key: str
-    nextcloud_caldav_url: str
-    nextcloud_username: str
-    nextcloud_app_password: str
+    beacon_api_key: Annotated[str, Field(min_length=1)]
+    nextcloud_caldav_url: Annotated[str, Field(min_length=1)]
+    nextcloud_username: Annotated[str, Field(min_length=1)]
+    nextcloud_app_password: Annotated[str, Field(min_length=1)]
     beacon_timezone: str = "America/Chicago"
     beacon_calendars: str = "theater,school,personal"
-    vikunja_api_url: str
-    vikunja_api_token: str
+    vikunja_api_url: Annotated[str, Field(min_length=1)]
+    vikunja_api_token: Annotated[str, Field(min_length=1)]
     beacon_schedule_calendar: str = "personal"
+    beacon_interaction_default_duration_minutes: Annotated[
+        int, Field(ge=1, le=1440)
+    ] = 60
     daily_brief_travel_enabled: bool = False
     daily_brief_weather_enabled: bool = False
     daily_brief_travel_buffer_minutes: Annotated[

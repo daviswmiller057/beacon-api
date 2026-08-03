@@ -35,3 +35,12 @@
 ## ADR-009: Daily Brief uses direct optional clients and partial responses
 
 **Status:** Accepted. `DailyBriefService` consumes Beacon models from concrete CalDAV, Vikunja, Waze, and Home Assistant clients. No generic provider abstraction or AI is introduced. Source outages become typed warnings and partial responses because one unavailable integration should not erase useful data from the others. Waze's unofficial Live Map dependency is isolated behind `WazeClient`.
+
+## ADR-010: Interaction interprets, services decide
+
+**Status:** Accepted. `/interact` accepts either a message or validated structured
+intent. A deliberately narrow rule-based interpreter makes the core system usable
+without a hosted AI dependency. Future Gemini/n8n integrations provide only the
+same structured intent. `InteractionService` resolves identity and delegates;
+`SchedulerService` and `DailyBriefService` retain all business decisions and
+external effects.

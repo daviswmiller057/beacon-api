@@ -191,3 +191,64 @@ class DailyBriefResponse(BaseModel):
     conflicts: list[BriefConflict]
     summary: DailyBriefSummary
     spoken_summary: str
+
+
+class IntentType(StrEnum):
+    BRIEF = "BRIEF"
+    SCHEDULE_TASK = "SCHEDULE_TASK"
+
+
+class StructuredIntent(BaseModel):
+    action: IntentType
+    task_id: int | None = None
+    task_title: str | None = None
+    target_date: date | None = None
+    duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
+    create_event: bool = True
+
+    @model_validator(mode="after")
+    def validate_task_selector(self):
+        if self.action is IntentType.SCHEDULE_TASK:
+            selectors = [self.task_id is not None, bool(self.task_title)]
+            if sum(selectors) != 1:
+                raise ValueError(
+                    "Scheduling intent requires exactly one of task_id or task_title"
+                )
+        return self
+
+
+class InteractRequest(BaseModel):
+    message: Annotated[str, Field(min_length=1, max_length=2000)] | None = None
+    intent: StructuredIntent | None = None
+
+    @model_validator(mode="after")
+    def validate_input(self):
+        if self.message is None and self.intent is None:
+            raise ValueError("Provide message or intent")
+        return self
+
+
+class InteractionAction(BaseModel):
+    action: str
+    status: str
+    target: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class InteractResponse(BaseModel):
+    result: str
+    intent: StructuredIntent
+    actions_taken: list[InteractionAction]
+    brief: DailyBriefResponse | None = None
+    schedule: ScheduleTaskResponse | None = None
+
+
+class ServiceStatusResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+    timezone: str
+    calendars: list[str]
+    schedule_calendar: str
+    integrations: dict[str, bool]
+    interaction_modes: list[str]

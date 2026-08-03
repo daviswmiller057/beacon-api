@@ -11,6 +11,9 @@ Planned/speculative items below are not implemented.
 - Recommendation-only mode or one Nextcloud event creation.
 - Marker-based duplicate detection, self-excluding recalculation, explicit statuses, and in-place work-block updates.
 - Request-driven Daily Brief with calendar/work blocks, task prioritization, optional Waze travel, optional Home Assistant weather, conflicts, warnings, and deterministic summaries.
+- Stable `/interact`, `/brief`, and `/status` endpoints for humans and automations.
+- Narrow offline intake for brief/status and task scheduling, plus a validated structured-intent boundary for future AI interpretation.
+- Docker restart policy, container health check, persistent `.env` template, and fail-fast startup validation.
 
 ## Confirmed limitations
 
@@ -44,6 +47,6 @@ The implemented request-driven update flow is in [Scheduling](scheduling.md).
 - User-configurable deterministic scoring profiles.
 - Task splitting under explicit user-controlled rules.
 - Context registry, reminders, and broader Home Assistant/workflow integrations.
-- AI interpretation upstream, producing validated structured requests.
+- A Gemini interpreter adapter that produces the existing validated structured intent.
 
 AI must not directly execute important mutations. AI interprets; deterministic systems execute; important decisions stay with the user; self-host where practical; reduce executive-function load; optimize for usefulness over novelty.

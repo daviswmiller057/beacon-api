@@ -2,6 +2,7 @@ services:
   beacon-api:
     build: .
     container_name: beacon-api
+    init: true
     restart: unless-stopped
     environment:
       BEACON_API_KEY: ${BEACON_API_KEY}
@@ -13,6 +14,7 @@ services:
       VIKUNJA_API_URL: ${VIKUNJA_API_URL}
       VIKUNJA_API_TOKEN: ${VIKUNJA_API_TOKEN}
       BEACON_SCHEDULE_CALENDAR: ${BEACON_SCHEDULE_CALENDAR:-personal}
+      BEACON_INTERACTION_DEFAULT_DURATION_MINUTES: ${BEACON_INTERACTION_DEFAULT_DURATION_MINUTES:-60}
       DAILY_BRIEF_TRAVEL_ENABLED: ${DAILY_BRIEF_TRAVEL_ENABLED:-false}
       DAILY_BRIEF_WEATHER_ENABLED: ${DAILY_BRIEF_WEATHER_ENABLED:-false}
       DAILY_BRIEF_TRAVEL_BUFFER_MINUTES: ${DAILY_BRIEF_TRAVEL_BUFFER_MINUTES:-15}
@@ -23,3 +25,4 @@ services:
       HOME_ASSISTANT_WEATHER_ENTITY: ${HOME_ASSISTANT_WEATHER_ENTITY:-weather.home}
     ports:
       - "8000:8000"
+    stop_grace_period: 20s
