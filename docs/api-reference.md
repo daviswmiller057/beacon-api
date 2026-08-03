@@ -1,76 +1,291 @@
 # API reference
 
-The FastAPI application title is `Beacon API`, version `0.3.0`. See [Data models](data-models.md).
+Beacon is a JSON-over-HTTP FastAPI application named `Beacon API`, currently
+version `0.3.0`. FastAPI also exposes generated OpenAPI metadata and Swagger UI
+at its defaults (`/openapi.json` and `/docs`). This document covers Beacon's
+application endpoints and behavior.
+
+See [Data models](data-models.md) for every field and [CLI usage](../CLI_USAGE.md)
+for the supported terminal client.
+
+## Base URL and content type
+
+Local and Compose examples use:
+
+```text
+http://localhost:8000
+```
+
+Request bodies are JSON. Successful application responses are JSON. Datetimes
+use Pydantic ISO-8601 serialization and should include an offset.
 
 ## Authentication
 
-Protected endpoints require `X-Beacon-API-Key`. Missing or incorrect values return
-`401` with `{"detail":"Invalid Beacon API key"}`. `/health` is public.
+Every endpoint except `/health` requires this header:
+
+```http
+X-Beacon-API-Key: <configured BEACON_API_KEY>
+```
+
+A missing or incorrect key returns:
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{"detail":"Invalid Beacon API key"}
+```
+
+There is one shared key with no user identities, roles, sessions, or read/write
+scopes. Never place the key in a URL or commit it to source control.
+
+## Endpoint summary
+
+| Method and path | Auth | Mutates external state | Purpose |
+|---|---:|---:|---|
+| `GET /health` | no | no | Beacon process liveness. |
+| `GET /status` | yes | no | Secret-safe configuration snapshot. |
+| `GET /brief` | yes | no | Stable Daily Brief alias. |
+| `POST /interact` | yes | depends on intent | Natural-language or structured-intent front door. |
+| `POST /v1/availability` | yes | no | Explicit ranked availability calculation. |
+| `POST /v1/schedule/task/{task_id}` | yes | configurable | Explicit scheduling lifecycle for one existing task. |
+| `GET /v1/brief/daily` | yes | no | Versioned Daily Brief endpoint. |
 
 ## `GET /health`
 
-Success `200`: `{"status":"ok","service":"beacon-api"}`.
+Public liveness check. It does not load external integrations or prove they are
+reachable.
+
+Success `200`:
+
+```json
+{
+  "status": "ok",
+  "service": "beacon-api"
+}
+```
 
 ## `GET /status`
 
-Requires API key. Returns a secret-safe service/configuration snapshot: version,
-timezone, calendar names, schedule calendar, configured integration flags, and
-supported interaction modes. It does not contact external services; use `/brief`
-to observe current calendar/task availability.
+Returns a configuration-safe snapshot. It does not contact external services;
+integration booleans mean configured/enabled, not reachable or healthy.
+
+Success `200` shape:
+
+```json
+{
+  "status": "ok",
+  "service": "beacon-api",
+  "version": "0.3.0",
+  "timezone": "America/Chicago",
+  "calendars": ["theater", "school", "personal"],
+  "schedule_calendar": "personal",
+  "integrations": {
+    "nextcloud": true,
+    "vikunja": true,
+    "home_assistant": false,
+    "travel": false
+  },
+  "interaction_modes": ["natural_language", "structured_intent"]
+}
+```
+
+`nextcloud` and `vikunja` are always `true` because their settings are required.
+`home_assistant` requires both URL and token. `travel` reflects
+`DAILY_BRIEF_TRAVEL_ENABLED`.
 
 ## `GET /brief`
 
-Requires API key. This is the automation-friendly alias for
-`GET /v1/brief/daily`, including the optional `date=YYYY-MM-DD` query parameter.
+Stable automation-facing alias for `GET /v1/brief/daily`.
+
+Query parameters:
+
+| Name | Required | Format | Behavior |
+|---|---:|---|---|
+| `date` | no | `YYYY-MM-DD` | Defaults to the current date in `BEACON_TIMEZONE`. |
+
+Example:
+
+```bash
+curl -sS 'http://localhost:8000/brief?date=2026-08-04' \
+  -H 'X-Beacon-API-Key: replace-with-your-key'
+```
+
+Success `200` is `DailyBriefResponse`. The operation is read-only. Expected
+calendar, Vikunja, Waze, and Home Assistant failures normally produce partial
+data plus typed `warnings`, not a failed response. Invalid date syntax is `422`;
+an unexpected generation failure is `502` with
+`Daily brief generation failed: <message>`.
 
 ## `POST /interact`
 
-Requires API key. Accepts `InteractRequest` with a natural-language `message`, a
-validated `intent`, or both. When both are supplied, `intent` is authoritative.
-Success returns `InteractResponse` containing `result`, the accepted structured
-intent, `actions_taken`, and either a full `brief` or `schedule` result.
+Beacon's stable interaction front door. It accepts a natural-language `message`,
+a validated structured `intent`, or both. At least one is required. If both are
+present, `intent` is authoritative and the message is not interpreted.
 
-The local interpreter supports brief/status requests and scheduling a Vikunja
-task by title or ID, with optional `today`, `tomorrow`, and duration phrases.
-Unsupported intake is `400`; missing task is `404`; ambiguity, completed tasks,
-duplicate-marker ambiguity, and no availability are `409`; invalid bounds are
-`422`; upstream failures are `502`.
+Natural-language example:
+
+```bash
+curl -sS http://localhost:8000/interact \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'X-Beacon-API-Key: replace-with-your-key' \
+  -d '{"message":"Schedule lighting paperwork tomorrow"}'
+```
+
+Structured example:
+
+```json
+{
+  "intent": {
+    "intent": "SCHEDULE_TASK",
+    "task_id": 42,
+    "deadline": "2026-08-04",
+    "duration_minutes": 90
+  }
+}
+```
+
+Success `200` is `InteractResponse` and contains:
+
+- backend-generated human-readable `result`;
+- the accepted `intent`;
+- the deterministic `plan`;
+- `actions_taken` describing actual execution;
+- an optional typed `task`, `schedule`, or `brief` result.
+
+Successful clarification is also `200`: an `UNKNOWN` or unsupported time
+constraint produces a question, a `REQUEST_CLARIFICATION` plan, and no external
+mutation.
+
+Common interaction errors:
+
+| Status | Cause |
+|---|---|
+| `400` | Unsupported rules-interpreter input or unsupported intent. |
+| `404` | Requested/resolved Vikunja task or calendar event not found. |
+| `409` | Ambiguous task title, completed task, multiple linked events, or no availability. |
+| `422` | Pydantic request error, missing deadline, or invalid scheduling bounds/value. |
+| `502` | Vikunja/CalDAV/Gemini upstream failure or other mapped interaction failure. |
+| `503` | Interpreter configuration failure discovered while handling the request. Gemini-key absence is normally caught at startup first. |
+
+See [Interaction](interaction.md) for grammar, planning, and execution details.
 
 ## `POST /v1/availability`
 
-Requires API key. Body: `AvailabilityRequest`. Success `200`: `AvailabilityResponse`, including zero or more ranked options.
+Calculates ranked openings from actual configured CalDAV busy time. It never
+writes an event.
 
-Any exception inside the route's integration/build block maps to `502` with `Calendar lookup failed: <message>`. Request validation occurs earlier and maps to FastAPI `422`.
+Request example:
+
+```json
+{
+  "earliest_iso": "2026-08-04T09:00:00-05:00",
+  "deadline_iso": "2026-08-04T22:00:00-05:00",
+  "duration_minutes": 90,
+  "buffer_before_minutes": 15,
+  "buffer_after_minutes": 15,
+  "max_options": 3,
+  "calendar_names": ["theater", "school", "personal"],
+  "daily_start": "09:00",
+  "daily_end": "22:00"
+}
+```
+
+Success `200` example shape:
+
+```json
+{
+  "calendars_checked": ["theater", "school", "personal"],
+  "events_found": 4,
+  "options": [
+    {
+      "start_iso": "2026-08-04T14:00:00-05:00",
+      "end_iso": "2026-08-04T15:30:00-05:00",
+      "score": 114.4,
+      "reasons": [
+        "fits requested duration",
+        "daytime opening",
+        "leaves at least one hour of flexibility"
+      ]
+    }
+  ],
+  "no_availability": false
+}
+```
+
+Pydantic validation failures are `422`. Any exception inside the route's
+calendar/build block, including execution-time parsing of invalid `daily_start`
+or `daily_end`, is mapped to `502` with
+`Calendar lookup failed: <message>`.
 
 ## `POST /v1/schedule/task/{task_id}`
 
-Requires API key. `task_id` is an integer. Body: `ScheduleTaskRequest`. Success `200`: `ScheduleTaskResponse` with explicit status:
+Schedules or recommends one work block for an existing Vikunja task. `task_id`
+must be an integer path value.
 
-- `NEW`: new event created;
-- `UNCHANGED`: existing normalized bounds match; no write;
-- `UPDATED`: existing resource updated in place;
-- `RECOMMENDATION_ONLY`: `create_event=false`; no write.
+Request example:
 
-All successes include the normalized task, `availability.options[0]`, checked calendars, and busy-event count. `already_scheduled` remains for compatibility; clients should use `status`.
+```json
+{
+  "duration_minutes": 90,
+  "earliest_iso": "2026-08-04T09:00:00-05:00",
+  "deadline_iso": "2026-08-04T22:00:00-05:00",
+  "calendar_name": "personal",
+  "availability_calendars": ["theater", "school", "personal"],
+  "buffer_before_minutes": 15,
+  "buffer_after_minutes": 15,
+  "daily_start": "09:00",
+  "daily_end": "22:00",
+  "create_event": true
+}
+```
 
-| Status | Cause | Detail |
+`earliest_iso` defaults to the current Beacon-local time. `deadline_iso`
+defaults to the task due date; if both are absent, the request is `422`.
+`calendar_name` defaults to `BEACON_SCHEDULE_CALENDAR`, and
+`availability_calendars` defaults to `BEACON_CALENDARS`.
+
+Success `200` is `ScheduleTaskResponse` with one authoritative status:
+
+| Status | Meaning | Calendar write |
+|---|---|---:|
+| `NEW` | No linked event existed; Beacon created one. | create |
+| `UNCHANGED` | One linked event already had the selected normalized bounds. | none |
+| `UPDATED` | One linked event existed with different bounds and was saved in place. | update |
+| `RECOMMENDATION_ONLY` | `create_event=false`; selected slot returned. | none |
+
+Every success includes the normalized task, `selected_option`, checked calendars,
+and busy-event count. `calendar_event` is populated for created or existing
+events when available. `already_scheduled` is retained for compatibility; new
+clients should use `status`.
+
+Error mapping:
+
+| Status | Cause | Typical detail |
 |---|---|---|
-| `404` | `VikunjaTaskNotFound` | `Vikunja task <id> was not found` |
-| `409` | completed task | `Task <id> is already completed.` |
-| `422` | missing request/task deadline | `Task has no due date. Supply deadline_iso.` |
-| `409` | no availability | `No available work block found.` |
-| `409` | multiple marker matches | `Multiple Beacon events found for Vikunja task <id>.` |
-| `404` | missing/stale event during update | typed lifecycle detail |
-| `422` | caught `ValueError` | underlying message |
-| `502` | `VikunjaError` | client-generated message |
-| `502` | CalDAV update/integration error | typed service detail |
-| unchanged | explicit `HTTPException` | re-raised |
-| `502` | other caught exception | `Scheduling integration failed: <message>` |
-
-Pydantic/path/header validation precedes route execution and uses standard `422`. Service construction is inside the mapped route block. CalDAV `ValueError` is `422`, missing/stale events are `404`, and integration/update failures are `502`.
+| `404` | Vikunja task missing | `Vikunja task <id> was not found` |
+| `404` | Linked event disappeared/became stale during update | typed lifecycle detail |
+| `409` | Task completed | `Task <id> is already completed.` |
+| `409` | No ranked opening | `No available work block found.` |
+| `409` | Multiple exact marker matches | `Multiple Beacon events found for Vikunja task <id>.` |
+| `422` | No request/task deadline | `Task has no due date. Supply deadline_iso.` |
+| `422` | Invalid value/bounds/calendar-update shape | underlying validation detail |
+| `502` | Vikunja or CalDAV integration/update failure | typed adapter detail |
+| `502` | Unexpected mapped failure | `Scheduling integration failed: <message>` |
 
 ## `GET /v1/brief/daily`
 
-Requires API key. Optional query parameter `date=YYYY-MM-DD`; omission uses today in `BEACON_TIMEZONE`. Success `200` returns `DailyBriefResponse`. Calendar, Vikunja, Waze, and Home Assistant operational failures normally produce typed warnings and partial `200` responses rather than failing the brief. Invalid query dates use FastAPI `422`; unexpected generation failures map to `502` with `Daily brief generation failed: <message>`.
+Versioned form of `/brief`, with the same optional `date=YYYY-MM-DD`, response,
+read-only guarantee, warning behavior, and errors.
 
-The endpoint is read-only. It does not schedule, update, delete, or create calendar/task records.
+## Validation and error shape
+
+FastAPI/Pydantic request validation occurs before route execution and returns a
+standard `422` body whose `detail` is a list. Route/service errors use a string
+`detail`. Clients should use the HTTP status for control flow and treat detail
+text as user-facing diagnostic context rather than a stable machine code.
+
+Daily Brief warnings are the exception: they are typed fields inside a successful
+`200` response because partial calendar/task/context information can still be
+useful.

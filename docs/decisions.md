@@ -2,7 +2,7 @@
 
 ## ADR-001: Deterministic execution
 
-**Status:** Accepted. AI may interpret intent, but availability, conflict checks, and mutations remain deterministic/testable. Important decisions remain with the user; usefulness outranks novelty. AI is not in the current API runtime.
+**Status:** Accepted. AI may interpret intent, but availability, conflict checks, action planning, and mutations remain deterministic/testable. Important decisions remain with the user; usefulness outranks novelty. Gemini is available as an optional interpreter, but it can return only a validated `StructuredIntent` and receives no integration clients or credentials.
 
 ## ADR-002: LAN Vikunja communication
 
@@ -40,7 +40,32 @@
 
 **Status:** Accepted. `/interact` accepts either a message or validated structured
 intent. A deliberately narrow rule-based interpreter makes the core system usable
-without a hosted AI dependency. Future Gemini/n8n integrations provide only the
-same structured intent. `InteractionService` resolves identity and delegates;
-`SchedulerService` and `DailyBriefService` retain all business decisions and
-external effects.
+without a hosted AI dependency; optional Gemini provides only the same validated
+intent. `InteractionService` connects interpreter, planner, and executor;
+`ActionExecutor` performs safe task resolution and delegates. `SchedulerService`
+and `DailyBriefService` retain their domain decisions and external effects. n8n
+is not implemented.
+
+## ADR-011: Provider-neutral intent with optional Gemini
+
+**Status:** Accepted. `IntentInterpreter` is the stable boundary. The offline
+rules interpreter is the default; `GeminiInterpreter` is selected explicitly by
+configuration and uses structured JSON output. Every provider response must pass
+Pydantic validation before planning. Provider output cannot choose projects,
+calendars, time slots, API calls, or execution services.
+
+## ADR-012: Explicit deterministic action plans
+
+**Status:** Accepted. `ActionPlanner` converts validated intent into ordered
+`PlannedAction` values. `ActionExecutor` may execute only those actions. This
+separates language understanding from Beacon policy and makes clarification,
+task creation, scheduling, and read-only brief generation auditable in the
+response even though they are not persistently logged.
+
+## ADR-013: Thin, replaceable CLI
+
+**Status:** Accepted. `app/cli` communicates exclusively through Beacon's HTTP
+API, uses only the Python standard library, and contains presentation and
+transport concerns only. It must not import the interpreter, planner, executor,
+scheduler, or integration adapters. Other future interfaces should use the same
+API boundary.

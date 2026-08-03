@@ -169,27 +169,81 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 ## Interaction models
 
 `IntentType` has `BRIEF`, `CREATE_TASK`, `SCHEDULE_TASK`, and `UNKNOWN`.
-`StructuredIntent` contains `intent` plus optional `task_id`, `title`, `deadline`,
-`time_constraint`, `duration_minutes`, and `clarification_question`. Task creation
-requires a title; scheduling requires exactly one task ID or title; `UNKNOWN`
-requires a clarification question. The legacy input names `action`, `task_title`,
-and `target_date` remain validation aliases. Legacy `create_event` input is
-accepted for recommendation-mode compatibility but excluded from serialized
-intent and from the Gemini schema.
+
+### `StructuredIntent`
+
+| Field | Type/default | Rules/meaning |
+|---|---|---|
+| `intent` | `IntentType`, required | Accepts legacy input alias `action`. |
+| `task_id` | `int \| None` | Concrete Vikunja selector. |
+| `title` | `str \| None` | Length `1..500`; accepts legacy alias `task_title`. |
+| `deadline` | `date \| None` | Explicit/local target date; accepts legacy alias `target_date`. |
+| `time_constraint` | `str \| None` | Length `1..100`; interpreted only by deterministic planner policy. |
+| `duration_minutes` | `int \| None` | When present, `1..1440`. |
+| `clarification_question` | `str \| None` | Length `1..500`; required for `UNKNOWN`. |
+| `create_event` | `bool`, `True` | Compatibility input, excluded from serialized intent and Gemini schema. |
+
+Task creation requires a title. Scheduling requires exactly one task ID or title.
+`UNKNOWN` requires a clarification question. Other optional fields may still be
+present when not used by a particular intent; planner behavior is authoritative.
+
+### `PlannedAction` and `ActionPlan`
 
 `ActionPlan` contains the accepted intent and ordered `PlannedAction` values.
 Action types are `CREATE_TASK`, `SCHEDULE_WORK_BLOCK`, `GENERATE_BRIEF`, and
-`REQUEST_CLARIFICATION`. Plan fields such as task reuse and scheduling windows are
-Beacon decisions and are never supplied by an interpreter.
+`REQUEST_CLARIFICATION`. Plan fields are Beacon decisions and are never supplied
+by an interpreter.
 
-`InteractRequest` accepts optional `message` (1..2000 characters) and optional
-`intent`, but at least one is required. A supplied intent is authoritative.
+| `PlannedAction` field | Type/default | Meaning |
+|---|---|---|
+| `action` | `ActionType`, required | Authorized operation. |
+| `title` | `str \| None` | Task title for create/reuse. |
+| `task_id` | `int \| None` | Concrete task selector for scheduling. |
+| `deadline` | `date \| None` | Task date or date used to create scheduling bounds. |
+| `window_start` | `str \| None` | Planner-chosen daily start such as `12:00`. |
+| `window_end` | `str \| None` | Planner-chosen daily end such as `17:00`. |
+| `duration_minutes` | `int \| None` | When present, `1..1440`. |
+| `create_event` | `bool`, `True` | Whether scheduling may write. |
+| `reuse_existing` | `bool`, `False` | Whether executor should safely resolve title before creation. |
+| `question` | `str \| None` | Clarification text. |
 
-`InteractionAction` contains `action`, `status`, optional `target`, and a free-form
-JSON `details` map. `InteractResponse` contains human-readable `result`, accepted
-`intent`, its deterministic `plan`, `actions_taken`, and an optional populated
-typed result (`task`, `brief`, or `schedule`).
+### `InteractRequest`
 
-`ServiceStatusResponse` contains the service state/version, timezone, calendar
-configuration, boolean integration configuration flags, and supported interaction
-modes. It intentionally contains no credentials or live integration payloads.
+Accepts optional `message` (string length `1..2000`) and optional `intent`, but at
+least one is required. A supplied intent is authoritative when both are present.
+
+### `InteractionAction` and `InteractResponse`
+
+`InteractionAction` contains `action: str`, `status: str`, optional
+`target: str`, and `details: dict[str, Any]` defaulting to a new empty map. It is
+returned provenance, not persisted audit state.
+
+`InteractResponse` fields:
+
+| Field | Type/default | Meaning |
+|---|---|---|
+| `result` | `str`, required | Deterministic human-readable result/question. |
+| `intent` | `StructuredIntent`, required | Accepted intent. |
+| `plan` | `ActionPlan \| None` | Deterministic plan; current executor populates it. |
+| `actions_taken` | `list[InteractionAction]`, required | Ordered execution outcomes. |
+| `brief` | `DailyBriefResponse \| None` | Populated for brief actions. |
+| `schedule` | `ScheduleTaskResponse \| None` | Populated for scheduling actions. |
+| `task` | `VikunjaTask \| None` | Created/resolved task where applicable. |
+
+A clarification response has no external result object. A scheduling flow may
+include both `task` and `schedule`.
+
+### `ServiceStatusResponse`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `status` | `str` | Current service state (`ok`). |
+| `service` | `str` | Service name (`beacon-api`). |
+| `version` | `str` | Version from `app.version.VERSION`. |
+| `timezone` | `str` | Configured Beacon IANA timezone. |
+| `calendars` | `list[str]` | Parsed configured busy-calendar names. |
+| `schedule_calendar` | `str` | Configured default destination. |
+| `integrations` | `dict[str, bool]` | Configuration/enabled flags, not live health. |
+| `interaction_modes` | `list[str]` | Advertised natural-language and structured-intent inputs. |
+
+It intentionally contains no credentials or live integration payloads.
