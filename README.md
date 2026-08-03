@@ -9,6 +9,7 @@ Implemented today:
 - continuously running Docker service with restart and health-check policy;
 - public health check and API-key-protected business endpoints;
 - one top-level interaction endpoint for natural-language or pre-structured intent;
+- provider-neutral intake with Gemini structured output and deterministic action plans;
 - top-level deterministic status and Daily Brief endpoints for automations;
 - availability search across configured CalDAV calendars;
 - Vikunja task retrieval and deterministic slot ranking;
@@ -30,6 +31,11 @@ uvicorn app.main:app --reload
 ```
 
 Required settings are `BEACON_API_KEY`, `NEXTCLOUD_CALDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_APP_PASSWORD`, `VIKUNJA_API_URL`, and `VIKUNJA_API_TOKEN`. Optional defaults are in [Development](docs/development.md). Never commit `.env`, credentials, tokens, or app passwords.
+
+Natural-language intake defaults to the offline rule interpreter. For Gemini,
+set `BEACON_INTERPRETER=gemini`, `GEMINI_API_KEY`, and optionally
+`GEMINI_MODEL`. Set `VIKUNJA_DEFAULT_PROJECT_ID` when intake may create tasks.
+See [Intake Architecture](INTAKE_ARCHITECTURE.md).
 
 For the intended always-on deployment:
 

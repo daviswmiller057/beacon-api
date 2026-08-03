@@ -4,15 +4,21 @@
 `X-Beacon-API-Key`, converts input to a validated `StructuredIntent`, and then
 delegates all decisions and mutations to existing deterministic services.
 
-## Natural-language minimum
+## Natural-language intake
 
-The built-in interpreter intentionally supports a narrow offline grammar:
+The configured interpreter is selected with `BEACON_INTERPRETER`. `rules` is the
+offline default; `gemini` uses structured JSON output and requires
+`GEMINI_API_KEY`. Both return the same validated `StructuredIntent`; neither can
+call integrations. Beacon's deterministic planner and executor own all actions.
+
+The built-in rules interpreter intentionally supports a narrow offline grammar:
 
 - Daily Brief/status phrases such as `What's on today?`, `brief tomorrow`, or
   `status`.
 - Scheduling by title: `Schedule lighting paperwork tomorrow`.
 - Scheduling by ID: `Schedule task 42 today for 90 minutes` or `Schedule #42`.
 - Durations in minutes or hours. The configurable default is 60 minutes.
+- Task creation such as `Buy Liquid IV tomorrow` or `Create a task to file taxes`.
 
 `today` and `tomorrow` use `BEACON_TIMEZONE`. Explicit day requests search from
 09:00 through 22:00 on that day; requests without a day use now as the earliest
@@ -32,20 +38,21 @@ fields are supplied:
 ```json
 {
   "intent": {
-    "action": "SCHEDULE_TASK",
+    "intent": "SCHEDULE_TASK",
     "task_id": 42,
-    "target_date": "2026-08-04",
-    "duration_minutes": 90,
-    "create_event": true
+    "deadline": "2026-08-04",
+    "duration_minutes": 90
   }
 }
 ```
 
-Supported actions are `BRIEF` and `SCHEDULE_TASK`. A scheduling intent must name
-exactly one `task_id` or `task_title`. The external interpreter cannot select a
-calendar slot or invoke integrations; `InteractionService` resolves the task and
-calls `SchedulerService`, which remains responsible for ranking, duplicate
-prevention, and create/update behavior.
+Supported intents are `BRIEF`, `CREATE_TASK`, `SCHEDULE_TASK`, and `UNKNOWN`. A
+scheduling intent must name exactly one task ID or title. The prior `action`,
+`task_title`, and `target_date` input names remain accepted for compatibility,
+but responses use intent vocabulary. The external interpreter cannot select a
+calendar slot or invoke integrations; `ActionPlanner` selects operations and
+`ActionExecutor` delegates scheduling to `SchedulerService`, which remains
+responsible for ranking, duplicate prevention, and create/update behavior.
 
 ## Response
 

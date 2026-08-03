@@ -22,6 +22,10 @@ async def lifespan(_: FastAPI):
     ZoneInfo(settings.beacon_timezone)
     if not settings.calendar_names:
         raise RuntimeError("BEACON_CALENDARS must contain at least one calendar")
+    if settings.beacon_interpreter == "gemini" and not settings.gemini_api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is required when BEACON_INTERPRETER=gemini"
+        )
     logger.info(
         "Beacon %s ready in timezone %s with %d calendars",
         VERSION,

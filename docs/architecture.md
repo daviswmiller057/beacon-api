@@ -29,9 +29,13 @@ flowchart LR
     DBS --> W["WazeClient"]
     API --> IR["interaction router"]
     IR --> IS["InteractionService"]
-    IS --> RI["RuleBasedIntentInterpreter"]
-    IS --> S
-    IS --> DBS
+    IS --> II["IntentInterpreter"]
+    II --> RI["Rules or Gemini"]
+    IS --> AP["ActionPlanner"]
+    AP --> AE["ActionExecutor"]
+    AE --> V
+    AE --> S
+    AE --> DBS
     V -->|"Bearer token; LAN URL in deployment"| VS["Vikunja"]
     C -->|"username + app password"| NC["Nextcloud CalDAV"]
     CFG["cached Settings"] --> V
@@ -54,7 +58,11 @@ flowchart LR
 - `app/services/caldav_client.py`: calendar discovery, busy reads with task exclusion, duplicate search, in-place event writes.
 - `app/services/vikunja_client.py`: task retrieval and normalization.
 - `app/services/daily_brief.py`: read-only collection, prioritization, conflict detection, summaries, and graceful degradation.
-- `app/services/interaction.py`: narrow intake interpretation, deterministic task resolution, and delegation to scheduler/brief services.
+- `app/services/interaction.py`: thin interpreter/planner/executor orchestrator.
+- `app/intake/rules.py`: narrow offline interpreter used by default.
+- `app/intake/gemini.py`: Gemini structured-output adapter and fail-closed validation.
+- `app/intake/planner.py`: deterministic intent-to-action policy.
+- `app/intake/executor.py`: ordered service execution with safe task reuse.
 - `app/services/home_assistant_client.py`: weather entity normalization.
 - `app/services/waze_client.py`: direct Waze travel normalization.
 - `app/services/scheduler.py`: deterministic lifecycle orchestration; `find_slot` remains the availability boundary and `schedule_task` owns create/compare/update decisions.

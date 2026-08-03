@@ -97,6 +97,34 @@ def test_vikunja_list_tasks_uses_shared_normalization(monkeypatch):
     assert calls[0][1]["params"] == {"page": 1, "per_page": 100}
 
 
+def test_vikunja_create_task_uses_configured_project(monkeypatch):
+    calls = []
+
+    def fake_put(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Response(
+            {
+                "id": 8,
+                "title": "Buy Liquid IV",
+                "due_date": "2026-08-05T03:00:00Z",
+                "project_id": 7,
+            },
+            status_code=201,
+        )
+
+    monkeypatch.setattr("app.services.vikunja_client.httpx.put", fake_put)
+    client = VikunjaClient()
+    client.default_project_id = 7
+    due = datetime(2026, 8, 4, 22, 0, tzinfo=ZONE)
+    task = client.create_task("Buy Liquid IV", due)
+    assert task.id == 8
+    assert calls[0][0][0].endswith("/projects/7/tasks")
+    assert calls[0][1]["json"] == {
+        "title": "Buy Liquid IV",
+        "due_date": due.isoformat(),
+    }
+
+
 def test_home_assistant_weather_is_normalized(monkeypatch):
     monkeypatch.setattr(
         "app.services.home_assistant_client.httpx.get",

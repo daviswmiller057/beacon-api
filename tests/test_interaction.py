@@ -137,6 +137,15 @@ def test_rule_interpreter_parses_minimum_schedule_command():
     assert intent.duration_minutes == 60
 
 
+def test_rule_interpreter_preserves_buy_as_part_of_task_title():
+    intent = RuleBasedIntentInterpreter(settings()).interpret(
+        "Buy Liquid IV tomorrow", NOW.date()
+    )
+    assert intent.action is IntentType.CREATE_TASK
+    assert intent.task_title == "Buy Liquid IV"
+    assert intent.target_date == date(2026, 8, 4)
+
+
 def test_interaction_resolves_title_and_delegates_to_scheduler():
     service, scheduler = interaction_service()
     response = service.interact(

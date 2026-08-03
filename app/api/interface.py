@@ -3,6 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.config import get_settings
+from app.intake.interpreter import InterpreterConfigurationError, InterpreterError
 from app.models import (
     DailyBriefResponse,
     InteractRequest,
@@ -65,6 +66,14 @@ def interact(request: InteractRequest) -> InteractResponse:
             detail=str(exc),
         ) from exc
     except (VikunjaError, CalDAVError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+        ) from exc
+    except InterpreterConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except InterpreterError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
 class AvailabilityRequest(BaseModel):
@@ -195,26 +195,89 @@ class DailyBriefResponse(BaseModel):
 
 class IntentType(StrEnum):
     BRIEF = "BRIEF"
+    CREATE_TASK = "CREATE_TASK"
     SCHEDULE_TASK = "SCHEDULE_TASK"
+    UNKNOWN = "UNKNOWN"
 
 
 class StructuredIntent(BaseModel):
-    action: IntentType
+    """Provider-neutral description of what the user wants.
+
+    The validation aliases keep the pre-intake API contract readable while new
+    responses use intent-language rather than execution-language.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    intent: IntentType = Field(validation_alias=AliasChoices("intent", "action"))
     task_id: int | None = None
-    task_title: str | None = None
-    target_date: date | None = None
+    title: Annotated[str, Field(min_length=1, max_length=500)] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("title", "task_title"),
+    )
+    deadline: date | None = Field(
+        default=None,
+        validation_alias=AliasChoices("deadline", "target_date"),
+    )
+    time_constraint: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
-    create_event: bool = True
+    clarification_question: Annotated[
+        str, Field(min_length=1, max_length=500)
+    ] | None = None
+    # Compatibility for existing callers. New interpreters never emit it.
+    create_event: bool = Field(default=True, exclude=True)
 
     @model_validator(mode="after")
-    def validate_task_selector(self):
-        if self.action is IntentType.SCHEDULE_TASK:
-            selectors = [self.task_id is not None, bool(self.task_title)]
+    def validate_intent_fields(self):
+        if self.intent is IntentType.SCHEDULE_TASK:
+            selectors = [self.task_id is not None, bool(self.title)]
             if sum(selectors) != 1:
                 raise ValueError(
-                    "Scheduling intent requires exactly one of task_id or task_title"
+                    "SCHEDULE_TASK requires exactly one of task_id or title"
                 )
+        if self.intent is IntentType.CREATE_TASK and not self.title:
+            raise ValueError("CREATE_TASK requires title")
+        if self.intent is IntentType.UNKNOWN and not self.clarification_question:
+            raise ValueError("UNKNOWN requires clarification_question")
         return self
+
+    @property
+    def action(self) -> IntentType:
+        """Deprecated compatibility alias for integrations using v0.3."""
+        return self.intent
+
+    @property
+    def task_title(self) -> str | None:
+        return self.title
+
+    @property
+    def target_date(self) -> date | None:
+        return self.deadline
+
+
+class ActionType(StrEnum):
+    CREATE_TASK = "CREATE_TASK"
+    SCHEDULE_WORK_BLOCK = "SCHEDULE_WORK_BLOCK"
+    GENERATE_BRIEF = "GENERATE_BRIEF"
+    REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
+
+
+class PlannedAction(BaseModel):
+    action: ActionType
+    title: str | None = None
+    task_id: int | None = None
+    deadline: date | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+    duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
+    create_event: bool = True
+    reuse_existing: bool = False
+    question: str | None = None
+
+
+class ActionPlan(BaseModel):
+    intent: StructuredIntent
+    actions: list[PlannedAction]
 
 
 class InteractRequest(BaseModel):
@@ -238,9 +301,11 @@ class InteractionAction(BaseModel):
 class InteractResponse(BaseModel):
     result: str
     intent: StructuredIntent
+    plan: ActionPlan | None = None
     actions_taken: list[InteractionAction]
     brief: DailyBriefResponse | None = None
     schedule: ScheduleTaskResponse | None = None
+    task: VikunjaTask | None = None
 
 
 class ServiceStatusResponse(BaseModel):

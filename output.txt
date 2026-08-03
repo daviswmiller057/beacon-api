@@ -1,0 +1,101 @@
+The Beacon Intake System is complete in the local `intake` branch. No commits were created and nothing was pushed.
+
+### Summary
+
+Implemented the full boundary:
+
+`Human input → IntentInterpreter → StructuredIntent → ActionPlanner → ActionExecutor → Beacon services`
+
+Key behavior:
+
+- Provider-neutral interpreter protocol.
+- Gemini structured-JSON adapter with validation and safe error handling.
+- Offline rules interpreter retained as the default.
+- Intent-focused models: `CREATE_TASK`, `SCHEDULE_TASK`, `BRIEF`, and `UNKNOWN`.
+- Deterministic planning with clarification for unsupported or ambiguous input.
+- Vikunja task creation.
+- Scheduling delegated to the existing `SchedulerService`.
+- Existing availability, duplicate prevention, calendar updates, and Daily Brief behavior preserved.
+
+### Files changed
+
+Core intake:
+
+- [app/intake/interpreter.py](/home/davism/Projects/Beacon/beacon-api/app/intake/interpreter.py)
+- [app/intake/gemini.py](/home/davism/Projects/Beacon/beacon-api/app/intake/gemini.py)
+- [app/intake/rules.py](/home/davism/Projects/Beacon/beacon-api/app/intake/rules.py)
+- [app/intake/planner.py](/home/davism/Projects/Beacon/beacon-api/app/intake/planner.py)
+- [app/intake/executor.py](/home/davism/Projects/Beacon/beacon-api/app/intake/executor.py)
+- [app/intake/errors.py](/home/davism/Projects/Beacon/beacon-api/app/intake/errors.py)
+
+Integration and configuration:
+
+- [app/models.py](/home/davism/Projects/Beacon/beacon-api/app/models.py)
+- [app/services/interaction.py](/home/davism/Projects/Beacon/beacon-api/app/services/interaction.py)
+- [app/services/vikunja_client.py](/home/davism/Projects/Beacon/beacon-api/app/services/vikunja_client.py)
+- [app/api/interface.py](/home/davism/Projects/Beacon/beacon-api/app/api/interface.py)
+- [app/config.py](/home/davism/Projects/Beacon/beacon-api/app/config.py)
+- [app/main.py](/home/davism/Projects/Beacon/beacon-api/app/main.py)
+- [docker-compose.yml](/home/davism/Projects/Beacon/beacon-api/docker-compose.yml)
+
+Tests and documentation:
+
+- [tests/test_intake.py](/home/davism/Projects/Beacon/beacon-api/tests/test_intake.py)
+- [tests/test_interaction.py](/home/davism/Projects/Beacon/beacon-api/tests/test_interaction.py)
+- [tests/test_daily_brief_clients.py](/home/davism/Projects/Beacon/beacon-api/tests/test_daily_brief_clients.py)
+- [INTAKE_ARCHITECTURE.md](/home/davism/Projects/Beacon/beacon-api/INTAKE_ARCHITECTURE.md)
+- Supporting README and architecture documentation.
+
+### Tests
+
+Full supported Python 3.12 Docker suite:
+
+```text
+63 passed in 1.00s
+```
+
+Also verified:
+
+- `git diff --check` passes.
+- External APIs are mocked.
+- Gemini tests require no real API key.
+- Existing scheduling tests remain green.
+
+### New user flow
+
+For `Schedule lighting paperwork tomorrow`:
+
+1. Interpreter returns a validated `SCHEDULE_TASK` intent.
+2. Planner produces ordered task-resolution/creation and scheduling actions.
+3. Executor reuses one unambiguous existing task or creates it in Vikunja.
+4. Existing `SchedulerService` chooses and manages the work block.
+5. The response includes the intent, plan, and executed-action audit.
+
+`Buy Liquid IV tomorrow` creates only a Vikunja task.
+
+### Gemini configuration
+
+```dotenv
+BEACON_INTERPRETER=gemini
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-3.5-flash
+VIKUNJA_DEFAULT_PROJECT_ID=7
+```
+
+Optional:
+
+```dotenv
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+```
+
+Without Gemini configuration, Beacon uses the local rules interpreter.
+
+### Known limitations
+
+- Relative dates support today and tomorrow.
+- Part-of-day windows support morning, afternoon, and evening.
+- Gemini requests are synchronous without retries.
+- Creating tasks requires a default Vikunja project.
+- Intake creation is not yet protected by persistent cross-request idempotency.
+
+Recommended next feature: add a persistent intake execution journal and idempotency keys before adding more channels or action types.

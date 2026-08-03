@@ -168,18 +168,27 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 
 ## Interaction models
 
-`IntentType` has `BRIEF` and `SCHEDULE_TASK`. `StructuredIntent` contains the
-action plus optional `task_id`, `task_title`, `target_date`, `duration_minutes`,
-and `create_event` (default `true`). Scheduling requires exactly one task ID or
-title; duration, when supplied, is `1..1440` minutes.
+`IntentType` has `BRIEF`, `CREATE_TASK`, `SCHEDULE_TASK`, and `UNKNOWN`.
+`StructuredIntent` contains `intent` plus optional `task_id`, `title`, `deadline`,
+`time_constraint`, `duration_minutes`, and `clarification_question`. Task creation
+requires a title; scheduling requires exactly one task ID or title; `UNKNOWN`
+requires a clarification question. The legacy input names `action`, `task_title`,
+and `target_date` remain validation aliases. Legacy `create_event` input is
+accepted for recommendation-mode compatibility but excluded from serialized
+intent and from the Gemini schema.
+
+`ActionPlan` contains the accepted intent and ordered `PlannedAction` values.
+Action types are `CREATE_TASK`, `SCHEDULE_WORK_BLOCK`, `GENERATE_BRIEF`, and
+`REQUEST_CLARIFICATION`. Plan fields such as task reuse and scheduling windows are
+Beacon decisions and are never supplied by an interpreter.
 
 `InteractRequest` accepts optional `message` (1..2000 characters) and optional
 `intent`, but at least one is required. A supplied intent is authoritative.
 
 `InteractionAction` contains `action`, `status`, optional `target`, and a free-form
 JSON `details` map. `InteractResponse` contains human-readable `result`, accepted
-`intent`, `actions_taken`, and exactly one populated typed result (`brief` or
-`schedule`) for current actions.
+`intent`, its deterministic `plan`, `actions_taken`, and an optional populated
+typed result (`task`, `brief`, or `schedule`).
 
 `ServiceStatusResponse` contains the service state/version, timezone, calendar
 configuration, boolean integration configuration flags, and supported interaction
