@@ -5,6 +5,11 @@ structured-intent requests. It is not a chatbot endpoint: every successful
 request must map to Beacon's small typed intent vocabulary and deterministic
 action pipeline.
 
+Persistent, bidirectional model-mediated sessions use `/v1/conversation`, not
+this route. That path produces `StructuredIntent` directly from a validated
+Beacon function call and then shares the planner/executor below. See
+[Text conversation](conversation.md).
+
 ```text
 message or caller-supplied intent
   -> IntentInterpreter (message only)
@@ -241,10 +246,10 @@ Action records currently use:
 
 ## Important limitations
 
-- The endpoint is command-oriented, not open-ended conversation; it has no
-  session or conversational memory.
+- This legacy endpoint is command-oriented and has no session memory; persistent
+  text sessions are available only through `/v1/conversation`.
 - Natural-language rules support only today/tomorrow and a narrow grammar.
-- Gemini calls are synchronous and have no retry/backoff.
+- Legacy `/interact` Gemini calls are synchronous and have no retry/backoff.
 - Task creation has no persistent request idempotency key; retried/concurrent
   create requests can duplicate tasks.
 - Title matching is deterministic but limited; ambiguity stops execution.

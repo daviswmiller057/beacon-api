@@ -1,8 +1,9 @@
 # External integrations
 
-Beacon keeps protocol details in small synchronous adapters. Business decisions
-remain in the planner and domain services; adapters normalize data and perform
-explicit external reads/writes.
+Beacon keeps protocol details in small adapters. Existing life-management
+clients are synchronous; the conversation model interface is asynchronous.
+Business decisions remain in the planner and domain services; adapters normalize
+data and perform explicit external reads/writes.
 
 See [Architecture](architecture.md), [Scheduling](scheduling.md),
 [Daily Brief](daily-brief.md), and [Debugging notes](debugging-notes.md).
@@ -13,7 +14,8 @@ See [Architecture](architecture.md), [Scheduling](scheduling.md),
 |---|---|---|---|---|
 | Vikunja | `VikunjaClient` | one task, paged task list | create task | HTTP timeout 15s; typed `VikunjaError`/`VikunjaTaskNotFound` |
 | Nextcloud | `CalDAVService` | calendars, busy intervals, daily events, linked blocks | create/update events | caldav client behavior; typed calendar errors where wrapped |
-| Gemini | `GeminiInterpreter` | structured intent response | none outside Gemini request | HTTP timeout 20s; typed interpreter errors |
+| Gemini legacy intake | `GeminiInterpreter` | structured intent response | none outside Gemini request | HTTP timeout 20s; typed interpreter errors |
+| Gemini conversation | `GeminiConversationProvider` | text/tool turns and usage | provider interaction state only | configurable timeout; stable provider errors and bounded pre-execution retry |
 | Home Assistant | `HomeAssistantClient` | one weather state | none | HTTP timeout 10s; brief warning on failure |
 | Waze | `WazeClient` | route duration/distance | none | library-controlled call; brief warning on failure |
 
@@ -152,6 +154,8 @@ properties are preserved. Disappeared/stale events become
 
 ## Gemini
 
+### Legacy `/interact` interpreter
+
 `GeminiInterpreter` is optional and selected with `BEACON_INTERPRETER=gemini`.
 It posts to the configured model's `generateContent` endpoint using the
 `x-goog-api-key` header, a 20-second timeout, temperature zero, JSON MIME type,
@@ -162,6 +166,34 @@ Beacon action. Its first candidate text must independently validate as
 `StructuredIntent`; unusable shape and invalid intent are typed response errors.
 HTTP/provider failures are interpreter errors and map through `/interact` without
 reaching the planner/executor.
+
+### Text conversation provider
+
+`GeminiConversationProvider` is selected when `CONVERSATION_ENABLED=true` and
+`CONVERSATION_PROVIDER=gemini`. It uses the official `google-genai` SDK and
+Gemini Interactions API. Direct SDK imports and response objects remain inside
+`app/conversation/gemini.py`.
+
+The adapter begins a turn with bounded normalized local history, versioned
+system instructions, and only Beacon-owned function declarations. Normal tool
+selection is automatic; no built-in Google Search, code, browser, HTTP, or other
+provider tool is enabled. A function request becomes provider-neutral
+`ModelToolCall`, then local tool-specific Pydantic validation constructs the
+existing `StructuredIntent`.
+
+After deterministic execution, the adapter submits authoritative data as a
+`function_result` associated with the original call ID and continues the same
+interaction. `previous_interaction_id` is an optimization only. If unavailable,
+the adapter reconstructs from bounded local normalized history plus the
+validated function call/result. Server-side provider state uses `store=true`,
+while SQLite remains Beacon's source of truth.
+
+Timeout, 429, and eligible 5xx errors before execution may receive one bounded
+retry. No provider failure can retry Beacon execution. A final-render failure
+returns the authoritative result with a deterministic degraded response.
+
+The provider receives no Beacon API key, integration credential, database
+credential, authorization header, raw environment, or unrestricted tool.
 
 ## Waze
 

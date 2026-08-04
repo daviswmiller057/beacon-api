@@ -81,6 +81,18 @@ python -m app.cli "Buy Liquid IV tomorrow"
 python -m app.cli "Schedule lighting paperwork tomorrow"
 ```
 
+Use the persistent conversation layer explicitly:
+
+```bash
+python -m app.cli --conversation --client-message-id shell-001 \
+  "Add rehearsal on August 17 at 9 AM for three hours"
+python -m app.cli --conversation --session-id SESSION_ID \
+  --client-message-id shell-002 "Make that three and a half hours"
+```
+
+The normal output includes the returned session ID. Use a new client message ID
+for each semantic message; reuse the same ID only to retry identical text.
+
 Call the read endpoints directly:
 
 ```bash
@@ -104,12 +116,15 @@ All command-line options:
 | `--brief` | Call `GET /brief` once. |
 | `--status` | Call `GET /status` once. |
 | `--health` | Call public `GET /health` once. |
+| `--conversation` | Send the positional message to `POST /v1/conversation`. |
+| `--session-id ID` | Continue an existing conversation session. |
+| `--client-message-id ID` | Set the conversation idempotency key; generated when omitted. |
 | `--url URL` | Override `BEACON_API_URL`. |
 | `--api-key KEY` | Override `BEACON_API_KEY`; environment is safer. |
 | `--timeout SECONDS` | Override the 10-second network timeout. |
 | `--debug` | Print valid raw JSON; include traceback for client errors. |
 
-`--brief`, `--status`, and `--health` are mutually exclusive. When no one-shot
+`--brief`, `--status`, `--health`, and `--conversation` are mutually exclusive. When no one-shot
 action or message is supplied, the CLI starts interactive mode.
 
 One-shot mode exits `0` after a displayed success and `1` after a handled CLI,

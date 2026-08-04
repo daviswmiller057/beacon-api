@@ -47,6 +47,7 @@ scopes. Never place the key in a URL or commit it to source control.
 | `GET /status` | yes | no | Secret-safe configuration snapshot. |
 | `GET /brief` | yes | no | Stable Daily Brief alias. |
 | `POST /interact` | yes | depends on intent | Natural-language or structured-intent front door. |
+| `POST /v1/conversation` | yes | depends on tool intent | Persistent bidirectional text interaction. |
 | `POST /v1/availability` | yes | no | Explicit ranked availability calculation. |
 | `POST /v1/schedule/task/{task_id}` | yes | configurable | Explicit scheduling lifecycle for one existing task. |
 | `GET /v1/brief/daily` | yes | no | Versioned Daily Brief endpoint. |
@@ -86,13 +87,14 @@ Success `200` shape:
     "home_assistant": false,
     "travel": false
   },
-  "interaction_modes": ["natural_language", "structured_intent"]
+  "interaction_modes": ["natural_language", "structured_intent", "conversation"]
 }
 ```
 
 `nextcloud` and `vikunja` are always `true` because their settings are required.
 `home_assistant` requires both URL and token. `travel` reflects
-`DAILY_BRIEF_TRAVEL_ENABLED`.
+`DAILY_BRIEF_TRAVEL_ENABLED`. `conversation` appears in `interaction_modes` only
+when `CONVERSATION_ENABLED=true`.
 
 ## `GET /brief`
 
@@ -170,6 +172,55 @@ Common interaction errors:
 | `503` | Interpreter configuration failure discovered while handling the request. Gemini-key absence is normally caught at startup first. |
 
 See [Interaction](interaction.md) for grammar, planning, and execution details.
+
+## `POST /v1/conversation`
+
+The optional persistent text front door is available only when
+`CONVERSATION_ENABLED=true`. The conversational Gemini turn selects a high-level
+Beacon function. Local validation maps it directly to `StructuredIntent`, then
+the existing planner and executor run it. There is no second model
+interpretation pass.
+
+Request:
+
+```json
+{
+  "message": "Houston Ballet maintenance calls August 17 through August 21, 2026, from 9 AM to 5 PM each day",
+  "client_message_id": "client-20260804-001",
+  "session_id": "optional-existing-session-id"
+}
+```
+
+`session_id` is omitted for a new session. `client_message_id` is required for
+idempotency. Unknown fields are rejected.
+
+Success shape:
+
+```json
+{
+  "session_id": "...",
+  "turn_id": "...",
+  "status": "completed",
+  "reply": "I added five maintenance calls.",
+  "beacon_result": {"status": "complete", "created_count": 5},
+  "degraded": false,
+  "provider": {"provider": "gemini", "model": "gemini-3.6-flash"},
+  "correlation_id": "...",
+  "error": null,
+  "idempotent_replay": false
+}
+```
+
+The full authoritative result includes the validated intent, plan, and action
+results. It—not the prose—is the source of truth. A final model-render failure
+returns that result, a deterministic fallback, and `degraded: true`; successful
+actions are not replayed.
+
+Stable HTTP errors include `404` for an unknown supplied session, `409` for a
+message-ID content conflict or concurrent turn, `422` for request-schema errors,
+and `503` for disabled/misconfigured conversation or local persistence failure.
+Provider failures during an established turn are represented in the typed `200`
+response so clients retain session and turn identifiers.
 
 ## `POST /v1/availability`
 

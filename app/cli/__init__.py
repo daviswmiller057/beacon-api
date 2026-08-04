@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import traceback
+import uuid
 from dataclasses import dataclass, field
 from http.client import HTTPResponse
 from typing import Any, Callable, TextIO
@@ -106,6 +107,23 @@ class BeaconClient:
             raise CliError("Enter a request for Beacon.")
         return self._request("POST", "/interact", payload={"message": message})
 
+    def conversation(
+        self,
+        message: str,
+        *,
+        session_id: str | None = None,
+        client_message_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not message.strip():
+            raise CliError("Enter a conversation message for Beacon.")
+        payload = {
+            "message": message,
+            "client_message_id": client_message_id or str(uuid.uuid4()),
+        }
+        if session_id:
+            payload["session_id"] = session_id
+        return self._request("POST", "/v1/conversation", payload=payload)
+
     def brief(self) -> dict[str, Any]:
         return self._request("GET", "/brief")
 
@@ -195,6 +213,7 @@ def format_response(kind: str, response: dict[str, Any], *, debug: bool = False)
         return json.dumps(response, indent=2, sort_keys=True)
     formatter = {
         "interact": _format_interaction,
+        "conversation": _format_conversation,
         "brief": _format_brief,
         "status": _format_status,
         "health": _format_health,
@@ -211,6 +230,14 @@ def _format_interaction(response: dict[str, Any]) -> str:
     if isinstance(brief, dict):
         lines.extend(_warning_lines(brief))
     return "\n".join(lines)
+
+
+def _format_conversation(response: dict[str, Any]) -> str:
+    reply = response.get("reply")
+    session_id = response.get("session_id")
+    if not isinstance(reply, str) or not reply.strip() or not isinstance(session_id, str):
+        raise MalformedResponseError("Beacon's conversation response is incomplete.")
+    return f"{reply}\nSession: {session_id}"
 
 
 def _format_brief(response: dict[str, Any]) -> str:
@@ -326,10 +353,20 @@ def build_parser() -> argparse.ArgumentParser:
     actions.add_argument("--brief", action="store_true", help="show today's brief")
     actions.add_argument("--status", action="store_true", help="show service status")
     actions.add_argument("--health", action="store_true", help="check service health")
+    actions.add_argument(
+        "--conversation",
+        action="store_true",
+        help="use the persistent text conversation endpoint",
+    )
     parser.add_argument("--url", help="Beacon API URL (overrides BEACON_API_URL)")
     parser.add_argument("--api-key", help="Beacon API key (prefer BEACON_API_KEY)")
     parser.add_argument("--timeout", type=float, help="request timeout in seconds")
     parser.add_argument("--debug", action="store_true", help="show raw JSON and error tracebacks")
+    parser.add_argument("--session-id", help="continue an existing conversation session")
+    parser.add_argument(
+        "--client-message-id",
+        help="idempotency identifier for this conversation message",
+    )
     return parser
 
 
@@ -349,6 +386,14 @@ def main(argv: list[str] | None = None) -> int:
             kind, response = "status", client.status()
         elif args.health:
             kind, response = "health", client.health()
+        elif args.conversation:
+            if not args.message:
+                raise CliError("--conversation requires a message.")
+            kind, response = "conversation", client.conversation(
+                " ".join(args.message),
+                session_id=args.session_id,
+                client_message_id=args.client_message_id,
+            )
         elif args.message:
             kind, response = "interact", client.interact(" ".join(args.message))
         else:

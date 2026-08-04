@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash"
     gemini_api_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     context_database_path: Annotated[str, Field(min_length=1)] = "./data/beacon.db"
+    conversation_enabled: bool = False
+    conversation_provider: Literal["gemini"] = "gemini"
+    conversation_model: str = "gemini-3.6-flash"
+    conversation_provider_timeout_seconds: Annotated[
+        float, Field(gt=0, le=120)
+    ] = 30.0
+    conversation_provider_max_retries: Annotated[int, Field(ge=0, le=1)] = 1
+    conversation_max_history_messages: Annotated[int, Field(ge=1, le=100)] = 24
+    conversation_max_tool_rounds: Annotated[int, Field(ge=1, le=2)] = 2
+    conversation_max_side_effect_intents: int = Field(default=1, ge=1)
+    conversation_max_malformed_repairs: Annotated[int, Field(ge=0, le=1)] = 1
+    conversation_max_input_length: Annotated[int, Field(ge=1, le=16000)] = 4000
+    conversation_max_output_length: Annotated[int, Field(ge=1, le=32000)] = 4000
+    conversation_max_output_tokens: Annotated[int, Field(ge=1, le=8192)] = 1024
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

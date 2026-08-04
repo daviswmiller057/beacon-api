@@ -16,7 +16,7 @@ from app.intake.gemini import GeminiInterpreter
 from app.intake.interpreter import IntentInterpreter
 from app.intake.planner import ActionPlanner
 from app.intake.rules import RuleBasedIntentInterpreter
-from app.models import InteractRequest, InteractResponse
+from app.models import InteractRequest, InteractResponse, StructuredIntent
 from app.services.daily_brief import DailyBriefService
 from app.services.scheduler import SchedulerService
 from app.services.vikunja_client import VikunjaClient
@@ -40,7 +40,7 @@ class InteractionService:
         self.scheduler = scheduler or SchedulerService()
         self.daily_brief = daily_brief or DailyBriefService()
         self.clock = clock or (lambda timezone: datetime.now(timezone))
-        self.interpreter = interpreter or self._build_interpreter()
+        self.interpreter = interpreter
         self.planner = planner or ActionPlanner(self.settings)
         self.executor = executor or ActionExecutor(
             vikunja=self.vikunja,
@@ -51,19 +51,32 @@ class InteractionService:
     def interact(self, request: InteractRequest) -> InteractResponse:
         timezone = ZoneInfo(self.settings.beacon_timezone)
         now = self.clock(timezone).astimezone(timezone)
-        intent = request.intent or self.interpreter.interpret(
-            request.message or "", now.date()
-        )
+        if request.intent is not None:
+            intent = request.intent
+        else:
+            interpreter = self.interpreter or self._build_interpreter()
+            intent = interpreter.interpret(request.message or "", now.date())
         if request.message is not None and intent.intent.value == "STORE_CONTEXT":
             intent = intent.model_copy(
                 update={"provenance": Provenance.EXPLICIT_USER_STATEMENT}
             )
-        plan = self.planner.plan(intent, now.date())
+        return self.execute_structured_intent(intent, now=now)
+
+    def execute_structured_intent(
+        self,
+        intent: StructuredIntent,
+        *,
+        now: datetime | None = None,
+    ) -> InteractResponse:
+        """Run one validated intent through Beacon's shared deterministic core."""
+        timezone = ZoneInfo(self.settings.beacon_timezone)
+        current = (now or self.clock(timezone)).astimezone(timezone)
+        plan = self.planner.plan(intent, current.date())
         if intent.intent.value.endswith("_CONTEXT") and self.executor.context_registry is None:
             self.executor.context_registry = ContextRegistryService.from_path(
                 self.settings.context_database_path
             )
-        return self.executor.execute(plan, now, timezone)
+        return self.executor.execute(plan, current, timezone)
 
     def _build_interpreter(self) -> IntentInterpreter:
         provider = self.settings.beacon_interpreter

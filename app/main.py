@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI
 
 from app.api.availability import router as availability_router
+from app.api.conversation import router as conversation_router
 from app.api.daily_brief import router as daily_brief_router
 from app.api.health import router as health_router
 from app.api.interface import router as interface_router
@@ -27,6 +28,10 @@ async def lifespan(_: FastAPI):
         raise RuntimeError(
             "GEMINI_API_KEY is required when BEACON_INTERPRETER=gemini"
         )
+    if settings.conversation_enabled and not settings.gemini_api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is required when CONVERSATION_ENABLED=true"
+        )
     ContextDatabase(settings.context_database_path).upgrade()
     logger.info(
         "Beacon %s ready in timezone %s with %d calendars",
@@ -46,6 +51,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(interface_router)
+app.include_router(conversation_router)
 app.include_router(availability_router, prefix="/v1")
 app.include_router(scheduling_router, prefix="/v1/schedule")
 app.include_router(daily_brief_router, prefix="/v1/brief")

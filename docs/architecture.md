@@ -6,7 +6,7 @@ external-system execution. The central rule is:
 > AI may interpret. Beacon validates, plans, and decides. Integration adapters
 > execute. Vikunja and Nextcloud remain sources of truth.
 
-See [Interaction](interaction.md), [Scheduling](scheduling.md),
+See [Interaction](interaction.md), [Text conversation](conversation.md), [Scheduling](scheduling.md),
 [Integrations](integrations.md), [Data models](data-models.md), and
 [Architecture decisions](decisions.md) for the detailed contracts.
 
@@ -18,18 +18,23 @@ flowchart TD
     Other["Future web, voice, mobile, or automation client"] --> API
     CLI -->|"HTTP only"| API["Beacon FastAPI"]
 
-    API --> INT["Interaction boundary"]
+    API --> INT["Legacy interaction boundary"]
+    API --> CONV["Text ConversationService"]
     API --> READ["Status / Daily Brief"]
     API --> LOW["Availability / scheduling APIs"]
 
     INT --> IP["Rules or Gemini interpreter"]
     IP --> SI["Validated StructuredIntent"]
+    CONV --> CP["ConversationModelProvider"]
+    CP --> TC["Validated Beacon tool call"]
+    TC --> SI
     SI --> PLAN["Deterministic ActionPlanner"]
     PLAN --> EXEC["ActionExecutor"]
 
     EXEC --> V["VikunjaClient"]
     EXEC --> S["SchedulerService"]
     EXEC --> DB["DailyBriefService"]
+    EXEC --> CR["ContextRegistryService"]
     LOW --> S
     LOW --> AV["Availability engine"]
     READ --> DB
@@ -46,6 +51,9 @@ flowchart TD
     W --> WZ["Waze Live Map"]
     HA --> HAS["Home Assistant state API"]
     IP -. "gemini mode only" .-> G["Gemini generateContent"]
+    CP -. "conversation mode" .-> GI["Gemini Interactions API"]
+    CR --> SQL[("SQLite /data/beacon.db")]
+    CONV --> SQL
 ```
 
 The CLI is deliberately replaceable. It does not import intake, planning,
@@ -61,18 +69,21 @@ without changing Beacon's business behavior.
 |---|---|---|---|
 | `app.api.health` | `/health` | public | Process liveness only. |
 | `app.api.interface` | `/interact`, `/brief`, `/status` | API key | Stable human/automation-facing interface. |
+| `app.api.conversation` | `/v1/conversation` | API key | Persistent bidirectional model-mediated text sessions. |
 | `app.api.availability` | `/v1/availability` | API key | Explicit availability calculation. |
 | `app.api.scheduling` | `/v1/schedule/task/{task_id}` | API key | Explicit task scheduling lifecycle. |
 | `app.api.daily_brief` | `/v1/brief/daily` | API key | Versioned Daily Brief endpoint. |
 
-Routes are synchronous. They construct service objects per request, delegate,
-and translate typed exceptions to HTTP responses. `pydantic-settings` reads
+Most legacy routes are synchronous; the conversation route is asynchronous for
+provider calls. Routes delegate to services and translate typed exceptions to
+HTTP responses. `pydantic-settings` reads
 environment variables and an optional `.env`; `get_settings()` caches the first
 settings object process-wide.
 
 The FastAPI lifespan validates the configured timezone and calendar list. It
-also rejects Gemini mode without `GEMINI_API_KEY`. Pydantic settings validation
-rejects missing required values before the service can start.
+also rejects either enabled Gemini mode without `GEMINI_API_KEY`. Startup applies
+additive SQLite migrations. Pydantic settings validation rejects missing
+required values before the service can start.
 
 ## Component responsibilities
 
@@ -101,6 +112,24 @@ rejects missing required values before the service can start.
   constraints.
 - `app/intake/executor.py`: executes only planned actions, resolves safe task
   reuse, delegates scheduling and brief generation, and creates response data.
+
+### Bidirectional text conversation
+
+- `app/conversation/models.py` and `provider.py`: provider-neutral messages,
+  tool calls, usage, errors, and provider protocol.
+- `app/conversation/gemini.py`: isolated google-genai Interactions adapter. No
+  Google SDK object crosses the adapter boundary.
+- `app/conversation/tools.py`: generated allowlist of high-level Beacon tools and
+  strict local mapping into the existing `StructuredIntent` model.
+- `app/conversation/service.py`: serializes a session turn, bounds history and
+  tool rounds, calls the deterministic core once, and asks the same model
+  interaction to render the authoritative result.
+- `app/conversation/repository.py`: local SQLite session, message, response,
+  idempotency, and active-turn state.
+
+The new path does not send model-produced natural language through
+`GeminiInterpreter`. `InteractionService.execute_structured_intent` is the one
+shared planner/executor entry point after both legacy and conversation intake.
 
 ### Domain services
 
@@ -143,6 +172,24 @@ No interpreter can invoke integrations. Even in Gemini mode, model output is
 validated as `StructuredIntent` before the planner sees it. The planner, not the
 model, chooses allowed operations and supported scheduling windows.
 
+### Persistent text conversation
+
+```text
+CLI or HTTP caller
+  -> POST /v1/conversation
+  -> local session/idempotency transaction
+  -> ConversationModelProvider
+  -> one allowlisted, locally validated Beacon tool call
+  -> StructuredIntent
+  -> shared ActionPlanner and ActionExecutor
+  -> authoritative structured result
+  -> function-result continuation on the same model interaction
+  -> natural reply plus authoritative result
+```
+
+The model does not receive direct integration tools. Multiple tool calls execute
+nothing, and a final-rendering failure cannot replay a completed action.
+
 ### Explicit scheduling
 
 ```text
@@ -169,19 +216,21 @@ GET /brief or GET /v1/brief/daily
 
 ## State and ownership
 
-Beacon has no internal database.
+Beacon has one internal SQLite database for Context Registry and conversation
+state. It is application state, not a replacement for Vikunja or Nextcloud.
 
 | State | Owner |
 |---|---|
 | Tasks, completion, due dates, priorities | Vikunja |
 | Calendar events and availability | Nextcloud/CalDAV |
 | Task-to-work-block link | Exact `Vikunja task ID: <id>` line in event description |
+| Explicit aliases, facts, relationships | Context Registry tables in SQLite |
+| Conversation sessions, turns, messages, idempotent responses | Conversation tables in SQLite |
 | Runtime configuration and secrets | Environment or uncommitted `.env` |
-| Request/response data | In memory for the lifetime of a request |
+| Legacy request/response data | In memory for the lifetime of a request |
 
-`get_settings()` is cached, but this is configuration caching rather than
-durable domain state. `actions_taken` is returned to the caller and is not an
-audit log.
+The conversation turn record is an idempotency/session journal, not a general
+audit log for all Beacon actions. Legacy `actions_taken` remains response-only.
 
 The editable description marker avoids an internal linkage database but is
 best-effort: manual edits, calendar moves, finite lookup windows, and concurrent
@@ -197,6 +246,10 @@ requests can defeat idempotency. Search/create/update is not transactional.
   scopes or per-client identities.
 - Gemini receives its own API key, user text, instructions, and an intent JSON
   schema. It does not receive Vikunja, Nextcloud, Home Assistant, or Beacon keys.
+- Conversation Gemini receives bounded normalized history, high-level tool
+  schemas, and explicit function-result data. It never receives other service
+  credentials, raw environment data, filesystem/network tools, or hidden model
+  reasoning.
 - The CLI reads its Beacon key from `BEACON_API_KEY` or `--api-key`, never stores
   it, and does not print it. Environment configuration is preferred because a
   command-line key may appear in shell history or process listings.
@@ -210,8 +263,10 @@ start period.
 
 Compose runs one `beacon-api` service with PID initialization,
 `restart: unless-stopped`, port `8000:8000`, a 20-second stop grace period, and
-environment values supplied from the host. It does not run Vikunja, Nextcloud,
-Home Assistant, or a database.
+environment values supplied from the host. The stable `beacon_data` named volume
+is mounted at `/data`; SQLite is `/data/beacon.db` and survives ordinary restart,
+rebuild, down/up, and container recreation. Compose does not run Vikunja,
+Nextcloud, Home Assistant, or a separate database server.
 
 Container health proves only that the HTTP process answers `/health`; it does
 not prove that external integrations are reachable. `/status` similarly reports
@@ -222,7 +277,7 @@ is required to observe integration behavior.
 
 The repository currently has no:
 
-- internal database, persistent idempotency journal, or durable audit trail;
+- general action audit trail or idempotency journal for legacy `/interact`;
 - background worker, automatic trigger, watcher, polling loop, or retries;
 - automatic Daily Brief delivery, reminder delivery, or voice synthesis;
 - n8n workflow, native mobile app, dedicated web UI, or inbound Home Assistant

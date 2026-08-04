@@ -14,6 +14,7 @@ Choose the path that matches what you are trying to do:
 - **Understand the system:** [Architecture](architecture.md)
 - **Understand natural-language intake:** [Interaction](interaction.md) and
   [Intake architecture](../INTAKE_ARCHITECTURE.md)
+- **Use persistent model-mediated text sessions:** [Text conversation](conversation.md)
 - **Understand persistent user context:** [Context Registry](context-registry.md)
 - **Understand scheduling behavior:** [Scheduling](scheduling.md) and
   [Availability engine](availability-engine.md)
@@ -25,6 +26,7 @@ Choose the path that matches what you are trying to do:
 |---|---|
 | [Architecture](architecture.md) | Runtime components, request paths, state ownership, security boundaries, and deployment shape. |
 | [Interaction](interaction.md) | `/interact`, the rules and Gemini interpreters, deterministic planning, execution, and clarification. |
+| [Text conversation](conversation.md) | Bidirectional Gemini function calling, local sessions, idempotency, safety, and degraded responses. |
 | [Context Registry](context-registry.md) | Explicit persistent context, resolution, forgetting, migrations, backups, and privacy. |
 | [Scheduling](scheduling.md) | Exact Vikunja-task-to-Nextcloud-work-block lifecycle. |
 | [Availability engine](availability-engine.md) | Interval normalization, daily windows, candidate generation, scoring, and limitations. |
@@ -51,10 +53,12 @@ Implemented external adapters are:
 - Nextcloud CalDAV reads, work-block creation, and in-place updates;
 - optional Waze travel estimates for Daily Brief;
 - optional Home Assistant weather reads for Daily Brief;
-- optional Gemini structured-intent interpretation.
+- optional Gemini structured-intent interpretation;
+- optional bidirectional Gemini text conversation through Beacon tools.
 
 Beacon has one internal SQLite database for explicitly taught Context Registry
-data. It has no background worker, automatic rescheduling daemon, reminder
-dispatcher, persistent audit log, or n8n workflow. Daily Brief
+data and persistent conversation sessions. It has no background worker,
+automatic rescheduling daemon, reminder dispatcher, general action audit log, or
+n8n workflow. Daily Brief
 generation and scheduling are request-driven. The local rule interpreter is the
 default; Gemini is optional and is limited to producing validated intent data.

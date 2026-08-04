@@ -3,6 +3,13 @@
 Beacon turns natural language into deterministic operations while keeping model
 output outside every side-effecting service boundary.
 
+This document describes the legacy `/interact` interpretation path. The
+bidirectional `/v1/conversation` path uses the conversational model's validated
+Beacon function call directly as `StructuredIntent`; it does not feed model text
+through this interpreter a second time. Both paths converge on
+`InteractionService.execute_structured_intent`, `ActionPlanner`, and
+`ActionExecutor`. See [Text conversation](docs/conversation.md).
+
 ```mermaid
 flowchart LR
     H[Human input] --> API[POST /interact]
@@ -132,7 +139,7 @@ Tests inject fake HTTP and service clients and never require real credentials.
   richer time-window type, then add deterministic planner policy.
 - Replace the initial relative-date parser with a deterministic temporal parser
   that can return clarification for unsupported phrases.
-- Add persisted idempotency and a task-intake marker before supporting retries or
-  concurrent create requests.
+- Extend the conversation layer's persisted idempotency pattern to legacy intake
+  before supporting retries or concurrent create requests there.
 - Add confirmation policy for higher-impact action types without changing any
   interpreter adapter.

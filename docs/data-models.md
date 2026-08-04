@@ -250,6 +250,58 @@ include both `task` and `schedule`.
 | `calendars` | `list[str]` | Parsed configured busy-calendar names. |
 | `schedule_calendar` | `str` | Configured default destination. |
 | `integrations` | `dict[str, bool]` | Configuration/enabled flags, not live health. |
-| `interaction_modes` | `list[str]` | Advertised natural-language and structured-intent inputs. |
+| `interaction_modes` | `list[str]` | Advertised natural-language, structured-intent, and enabled conversation inputs. |
 
 It intentionally contains no credentials or live integration payloads.
+
+## Conversation models
+
+Conversation models live in `app/conversation/models.py`; Google SDK response
+types are never API or domain models.
+
+### `ConversationRequest`
+
+| Field | Type | Rules |
+|---|---|---|
+| `message` | `str` | Required, trimmed, nonblank, absolute maximum 16,000; configurable runtime default 4,000. |
+| `client_message_id` | `str` | Required, trimmed, nonblank, maximum 200; unique within a session. |
+| `session_id` | `str \| None` | Omit to create a session; a supplied ID must already exist. |
+
+Extra fields are forbidden. Reusing a client message ID with identical normalized
+content returns the stored response; different content is a conflict.
+
+### Provider-neutral model boundary
+
+- `ModelMessage` contains role, optional text, tool name/call ID, and structured
+  content. Roles are user, assistant, tool call, and tool result.
+- `ModelToolCall` contains provider call ID, allowlisted name, and argument map.
+- `ModelTurn` contains optional text, tool calls, optional interaction ID, and
+  optional normalized usage.
+- `ToolDeclaration` contains name, description, JSON parameters, and read-only
+  classification.
+- `ModelUsage` contains optional input, output, and total token counts.
+
+These models contain no chain-of-thought or raw provider payload.
+
+### `ConversationResponse`
+
+| Field | Type/default | Meaning |
+|---|---|---|
+| `session_id` | `str` | Durable local session. |
+| `turn_id` | `str` | Stable local turn. |
+| `status` | `ConversationStatus` | Completed, clarification, partial, failure, provider, tool-validation, or safety outcome. |
+| `reply` | `str` | Natural response or deterministic degraded fallback. |
+| `beacon_result` | `dict \| None` | Authoritative structured deterministic result. |
+| `degraded` | `bool`, `False` | Rendering or safe-fallback indicator. |
+| `provider` | `ConversationProviderMetadata` | Safe provider/model/interaction/usage diagnostics. |
+| `correlation_id` | `str` | Operational correlation identifier. |
+| `error` | `ConversationError \| None` | Stable code, stage, and safe message. |
+| `idempotent_replay` | `bool`, `False` | Stored response returned without provider or Beacon execution. |
+
+Exact status values are `completed`, `clarification_required`, `partial`,
+`failed`, `provider_unavailable`, `invalid_tool_call`, `unsupported_tool`, and
+`safety_rejected`.
+
+SQLite persistence rows are internal repository records, not API models. They
+store normalized local history and validated tool/result data, but not provider
+debug dumps, credentials, authorization headers, or hidden reasoning.

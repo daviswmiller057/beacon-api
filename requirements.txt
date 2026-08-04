@@ -5,3 +5,4 @@ caldav==3.2.1
 pytest==8.4.1
 httpx==0.28.1
 WazeRouteCalculator==0.16
+google-genai>=2.0.0,<3.0.0

@@ -2,10 +2,11 @@
 
 ## Review basis and conclusion
 
-This review reflects the current repository: `app/`, Docker/Compose files,
-dependency manifest, tests, maintained `docs/`, and the new terminal client. It
-supersedes earlier review text that predated Gemini intake, deterministic action
-plans, Vikunja task creation, and the CLI.
+This review originated before the Context Registry and bidirectional text
+conversation layer. The maintained [Architecture](docs/architecture.md) and
+[Text conversation](docs/conversation.md) documents are authoritative for those
+newer components. The scheduling and integration observations below remain
+useful where they do not conflict with those documents.
 
 Beacon currently follows its intended architecture well:
 
@@ -18,11 +19,11 @@ policy. `ActionExecutor` coordinates execution. `SchedulerService` retains slot
 selection and event lifecycle decisions. No interface or interpreter bypasses the
 Beacon API/service boundary to call Vikunja or Nextcloud directly.
 
-The principal remaining architectural risks are reliability and state: mutating
-requests lack persistent idempotency/provenance, task-event linkage is an editable
-description line, all protected operations share one key, and external I/O has no
-retry/observability layer. These are acceptable minimum-system limitations but
-should be addressed before adding many channels or automatic triggers.
+The principal remaining architectural risks are reliability and state: legacy
+mutating requests lack persistent idempotency/provenance, task-event linkage is
+an editable description line, all protected operations share one key, and life-
+management I/O has no shared retry/observability layer. Conversation turns now
+have scoped persistent idempotency and structured operational logging.
 
 ## Current architecture
 
@@ -166,9 +167,10 @@ and concurrent external mutations remain nondeterministic environmental inputs.
 
 ## State, idempotency, and concurrency
 
-Beacon deliberately has no internal database. Vikunja stores tasks and Nextcloud
-stores calendar events. The only durable link is the exact event-description line
-`Vikunja task ID: <id>`.
+Beacon now has one internal SQLite database for explicit Context Registry data
+and conversation sessions/idempotency. Vikunja still stores tasks, Nextcloud
+still stores calendar events, and their durable task/event link remains the
+exact description line `Vikunja task ID: <id>`.
 
 This supports a small self-hosted deployment but has consequences:
 
@@ -178,7 +180,7 @@ This supports a small self-hosted deployment but has consequences:
 - manual marker edits or calendar moves can break discovery;
 - a ±365-day search window can miss a moved block;
 - `actions_taken` is returned but not persisted;
-- Beacon cannot answer who requested an old mutation or correlate retries.
+- legacy intake cannot answer who requested an old mutation or correlate retries.
 
 Marker-based lifecycle remains useful best-effort idempotency for ordinary
 sequential scheduling requests. It is not a concurrency guarantee.
@@ -190,7 +192,7 @@ Positive boundaries:
 - `/health` is public but minimal;
 - all business endpoints require one API key and comparison is constant-time;
 - status responses contain no secrets;
-- Gemini has only its own provider credential and intent data;
+- Gemini has only its own provider credential and bounded intent/conversation data;
 - adapters receive only the credentials they need;
 - the CLI neither stores nor prints its Beacon key;
 - `.env` is the intended uncommitted secret source.

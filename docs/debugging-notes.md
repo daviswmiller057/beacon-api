@@ -108,6 +108,35 @@ Task creation requires `VIKUNJA_DEFAULT_PROJECT_ID`. Scheduling by title with no
 match and no date intentionally returns not-found rather than creating an
 unschedulable task.
 
+## Text conversation
+
+Conversation is separate from the legacy Gemini interpreter. Check
+`CONVERSATION_ENABLED`, `CONVERSATION_PROVIDER`, `CONVERSATION_MODEL`, and
+`GEMINI_API_KEY`; health checks intentionally make no provider call.
+
+Stable failure stages help narrow diagnosis:
+
+- `provider_initial`: no valid tool call was available; Beacon executed nothing;
+- `tool_validation` or `tool_repair`: unknown/malformed arguments, zero writes;
+- authoritative `beacon_result.status=failed` or `partial`: planning/external
+  execution reached Beacon; do not manually retry without inspecting results;
+- `provider_rendering` with `degraded=true`: Beacon's result is authoritative and
+  the action must not be replayed;
+- HTTP 404: supplied session does not exist;
+- HTTP 409: active session turn or client-message-ID content conflict;
+- HTTP 503: feature/provider configuration or local persistence unavailable.
+
+Conversation state shares `CONTEXT_DATABASE_PATH`. In Compose it is
+`/data/beacon.db` on `beacon_data`. Inspect schema/version metadata, not stored
+message text, during routine diagnosis. Never use `docker compose down -v` as a
+troubleshooting reset; that intentionally deletes volume-backed application
+data.
+
+Normal conversation logs contain session, turn, correlation, provider/model,
+latency, tool name, status, and degraded state. They omit complete prompts,
+messages, results, and secrets. A repeated identical client message ID should
+return `idempotent_replay=true` without another model or Beacon execution.
+
 ## Vikunja
 
 Use the LAN API URL where possible. A public Cloudflare-proxied hostname
@@ -202,8 +231,10 @@ The dependency-free CLI tests do not use `TestClient` or live HTTP.
 
 ## Coverage boundaries
 
-Automated tests cover intake interpretation/planning/execution, scheduling
+Automated tests cover intake interpretation/planning/execution, conversation
+provider/tool/session/idempotency/failure behavior, scheduling
 lifecycle and error mapping, integration normalization, Daily Brief behavior,
 CLI configuration/requests/errors/modes, and selected API endpoints. There is no
 automatic live Nextcloud/Vikunja/Gemini/Waze/Home Assistant compatibility suite,
-load test, concurrency test, or end-to-end deployment test.
+load test, or deployment end-to-end suite. Conversation concurrency is tested
+with isolated SQLite and a blocking fake provider, not multiple service replicas.

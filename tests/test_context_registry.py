@@ -321,11 +321,18 @@ def test_migration_upgrade_is_repeatable_and_downgrade_reupgrade_works(tmp_path)
         assert [
             row[0]
             for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == [1]
+        ] == [1, 2]
     database.downgrade()
     with database.connect() as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert "context_entities" not in tables
+        assert "context_entities" in tables
+        assert "conversation_sessions" not in tables
     database.upgrade()
     with database.connect() as connection:
         assert connection.execute("SELECT count(*) FROM context_entities").fetchone()[0] == 0
+        assert "conversation_sessions" in {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }

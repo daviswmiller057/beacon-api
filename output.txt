@@ -1,71 +1,175 @@
-Implemented bounded daily calendar-event ranges directly on `main`.
+Beacon LLM Conversation Runtime Bug Fix Report
+
+Completion status
+Complete for the reported runtime defect.
 
 Root cause
+The conversation dependency factory in app/api/conversation.py constructed the
+settings, database, Gemini provider, repository inputs, and deterministic
+InteractionService, but it never returned a ConversationService. The intended
+return statement was incorrectly placed at the end of
+conversation_service_dependency(), after branches that already return or raise.
+Consequently get_conversation_service() returned None and FastAPI injected None
+as the endpoint service. The first request then failed when the endpoint called
+service.converse(request).
 
-Beacon could only retain the supplied range as an opaque `time_constraint`. The deterministic planner only understood today/tomorrow and broad dayparts, so it returned clarification instead of producing fixed event actions.
+Surgical fix
+- Moved ConversationService construction and return into
+  get_conversation_service(), immediately after its dependencies are built.
+- Removed the unreachable construction block from
+  conversation_service_dependency().
+- Added a regression test proving that the cached production factory returns
+  the constructed service.
+- No planner, executor, provider, persistence, tool, prompt, or external-service
+  architecture was redesigned.
 
-Architecture used
-
-The existing boundary remains intact:
-
-`POST /interact` or CLI → `InteractionService` → interpreter → validated `StructuredIntent` → `ActionPlanner` → `ActionExecutor` → `SchedulerService` → existing CalDAV service.
-
-The new `CREATE_CALENDAR_EVENTS` intent contains a typed `daily_event_range` with inclusive start/end dates, daily start/end times, and `repeat_daily=true`. Gemini and the offline rules interpreter emit the same provider-neutral structure. Exact fixed-time events are intentionally separate from Vikunja work-block scheduling.
-
-Deterministic planning and execution
-
-- The planner expands the complete inclusive range before execution.
-- The example produces five independent `CREATE_CALENDAR_EVENT` actions for August 17–21, each 09:00–17:00 in `America/Chicago`.
-- Title, description, destination calendar, and source reference are copied to every action.
-- Each action contains timezone-aware start/end datetimes.
-- Single-day ranges produce one action through the same path.
-- Reversed dates and end times at or before start times fail validation.
-- Ranges above `BEACON_MAX_DAILY_RANGE_OCCURRENCES` fail before execution; the conservative default is 31.
-- The executor preflights all calendar actions before any write.
-- Each action calls `SchedulerService.create_calendar_event`, which delegates to the existing CalDAV creation method. No RRULE is generated.
-- Batch responses report `COMPLETE`, `PARTIAL`, or `FAILED`, action/completed/failed counts, and per-action event or error details.
-- External failures do not trigger compensating deletes; remaining independent actions are attempted and the batch cannot be reported as complete.
-
-Files changed
-
-- `.env.example`
-- `INTAKE_ARCHITECTURE.md`
-- `app/config.py`
-- `app/intake/executor.py`
-- `app/intake/gemini.py`
-- `app/intake/interpreter.py`
-- `app/intake/planner.py`
-- `app/intake/rules.py`
-- `app/models.py`
-- `app/services/interaction.py`
-- `app/services/scheduler.py`
-- `docker-compose.yml`
-- `docs/data-models.md`
-- `docs/development.md`
-- `docs/interaction.md`
-- `tests/test_daily_calendar_range.py` (new)
-- `output.txt` (latest-report mirror requested by the user)
+Files changed by this fix
+- app/api/conversation.py
+  Returns the configured ConversationService from the cached factory.
+- tests/test_conversation_api.py
+  Adds test_conversation_service_factory_returns_constructed_service using
+  synthetic fakes only; it makes no provider or external-service request.
+- output.txt
+  Overwritten with this report as requested.
 
 Verification
+1. Targeted conversation regression suite
 
-- Focused new tests: `10 passed in 0.36s`.
-- Targeted interpreter, planner, executor, calendar, interaction, and CLI suite: 66 tests, exit status 0.
-- Complete suite: 115 tests collected, exit status 0.
-- `.venv/bin/python -m compileall -q app tests`: passed.
-- `git diff --check`: passed.
-- `docker compose config --quiet`: passed without printing secrets.
-- Planning-only verification produced exactly five actions at `2026-08-17T09:00:00-05:00` through `2026-08-21T17:00:00-05:00`, with no opaque time constraint and no external calls.
-- No formatter, linter, or type checker is configured or installed, so there was no applicable repository command for those checks.
+   PYTHONPATH=. .venv/bin/python -m pytest -q \
+     tests/test_conversation_api.py tests/test_cli.py \
+     tests/test_conversation.py tests/test_conversation_provider.py \
+     tests/test_conversation_repository.py
 
-Assumptions and limitations
+   Result: exit 0; 52 passed; 16 FastAPI/Python 3.14 deprecation warnings.
 
-- An exact titled date/time request is a direct calendar-event request, not a Vikunja task or availability-ranked work block.
-- Overnight events remain unsupported.
-- Only bounded daily repetition is implemented; there is no open-ended, weekly, monthly, yearly, or CalDAV recurrence support.
-- No container rebuild was necessary because planning and all execution verification used fakes; Compose configuration validation passed.
+2. Python import/bytecode smoke check
 
-Git and safety
+   PYTHONPATH=. .venv/bin/python -m compileall -q app tests
 
-Initial status was clean on `main`, already one commit ahead of `origin/main`. The branch remained `main`. Final changes are uncommitted modifications plus the new test file.
+   Result: exit 0.
 
-No commits, pushes, branch creation, branch changes, merges, rebases, resets, stashes, destructive Git operations, remote changes, secret changes, volume deletion, or production Vikunja/Nextcloud/calendar writes occurred.
+3. Diff whitespace validation
+
+   git diff --check
+
+   Result: exit 0; no whitespace errors.
+
+4. Formatter/linter attempt
+
+   .venv/bin/ruff format --check app/api/conversation.py \
+     tests/test_conversation_api.py
+
+   Result: not run because .venv/bin/ruff does not exist. The repository has no
+   pyproject.toml, setup.cfg, tox.ini, or Ruff dependency/configuration.
+
+5. Full suite attempt
+
+   PYTHONPATH=. .venv/bin/python -m pytest -q
+
+   Result: the run reached 94 passing tests and then hung in the pre-existing
+   synchronous FastAPI TestClient test
+   tests/test_daily_brief.py::test_daily_brief_endpoint_accepts_date_override.
+   It was interrupted without changing files.
+
+   Running that test alone under a bounded command:
+
+   timeout 20s env PYTHONPATH=. .venv/bin/python -m pytest -vv \
+     tests/test_daily_brief.py::test_daily_brief_endpoint_accepts_date_override
+
+   Result: exit 124 (timeout), confirming the environment-specific hang.
+
+   A run deselecting all five pre-existing synchronous TestClient cases
+   completed with 144 passed, 5 deselected, and 1 failed. The remaining failure
+   is tests/test_interaction.py::test_status_is_secret_safe_and_reports_boundaries:
+   the application already reports the implemented "conversation" mode, while
+   the older assertion expects only "natural_language" and "structured_intent".
+   Neither pre-existing issue was changed as part of this surgical runtime fix.
+
+6. Final post-report regression check
+
+   PYTHONPATH=. .venv/bin/python -m pytest -q \
+     tests/test_conversation_api.py tests/test_conversation_provider.py
+
+   Result: exit 0; 9 passed; 16 FastAPI/Python 3.14 deprecation warnings.
+   A final git diff --check also exited 0.
+
+Docker reproduction
+The exact Docker CLI command could not be rerun from this Codex execution
+session because access to /var/run/docker.sock was denied. No Docker or volume
+operation was attempted after that permission failure. The repaired code path
+is covered directly at the service factory and conversation API layers, and all
+52 conversation-related tests pass.
+
+Documentation
+The existing conversation documentation remains accurate; this patch corrects
+factory control flow and does not change the documented API, CLI, configuration,
+or architecture. No additional documentation behavior was invented.
+
+Repository state
+- Active branch throughout: LLM-interaction
+- No branch was created or switched.
+- The working tree already contained the full uncommitted conversation feature
+  and documentation before this fix. Those changes were preserved.
+- Final git status is recorded below exactly:
+
+  ## LLM-interaction
+   M .env.example
+   M ARCHITECTURE_REVIEW.md
+   M CLI_USAGE.md
+   M INTAKE_ARCHITECTURE.md
+   M README.md
+   M app/api/interface.py
+   M app/cli/__init__.py
+   M app/config.py
+   M app/context/database.py
+   M app/main.py
+   M app/services/interaction.py
+   M docker-compose.yml
+   M docs/README.md
+   M docs/api-reference.md
+   M docs/architecture.md
+   M docs/data-models.md
+   M docs/debugging-notes.md
+   M docs/development.md
+   M docs/integrations.md
+   M docs/interaction.md
+   M docs/roadmap.md
+   M output.txt
+   M requirements.txt
+   M tests/test_cli.py
+   M tests/test_context_registry.py
+  ?? app/api/conversation.py
+  ?? app/context/migrations/002_conversation.down.sql
+  ?? app/context/migrations/002_conversation.sql
+  ?? app/conversation/
+  ?? docs/conversation.md
+  ?? tests/test_conversation.py
+  ?? tests/test_conversation_api.py
+  ?? tests/test_conversation_provider.py
+  ?? tests/test_conversation_repository.py
+
+Safety confirmation
+- Commits: none
+- Pushes/pulls/fetches: none
+- Branch creation or switching: none
+- Merges/rebases/resets/stashes/restores: none
+- Discarded pre-existing changes: none
+- Git remote or tag changes: none
+- Secret or .env changes by this fix: none
+- Database or volume deletion: none
+- Production external writes: none
+- Gemini requests: none
+- Nextcloud, CalDAV, Vikunja, Home Assistant, notification, or other external
+  life-management writes: none
+
+Recommended container verification
+After the updated source is present in the running container, use a fresh client
+message ID to avoid an intentional idempotency conflict with prior attempts:
+
+  docker compose up -d --build beacon-api
+  docker compose exec beacon-api python -m app.cli \
+    --conversation \
+    --client-message-id runtime-factory-fix-001 \
+    "What can Beacon do?"
+
+This request is conversational and should perform no Beacon external write.

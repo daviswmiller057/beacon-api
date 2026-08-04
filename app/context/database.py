@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Iterator
 
 
-LATEST_SCHEMA_VERSION = 1
+MIGRATIONS = {
+    1: "001_context_registry",
+    2: "002_conversation",
+}
+LATEST_SCHEMA_VERSION = max(MIGRATIONS)
 
 
 class ContextDatabase:
@@ -35,7 +39,7 @@ class ContextDatabase:
                 if version in applied:
                     continue
                 sql = files("app.context.migrations").joinpath(
-                    f"{version:03d}_context_registry.sql"
+                    f"{MIGRATIONS[version]}.sql"
                 ).read_text()
                 connection.executescript(sql)
                 connection.execute(
@@ -54,7 +58,7 @@ class ContextDatabase:
             if version is None:
                 return
             sql = files("app.context.migrations").joinpath(
-                f"{version:03d}_context_registry.down.sql"
+                f"{MIGRATIONS[version]}.down.sql"
             ).read_text()
             connection.executescript(sql)
             connection.execute("DELETE FROM schema_migrations WHERE version = ?", (version,))

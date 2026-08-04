@@ -14,8 +14,10 @@ existing functionality elsewhere.
 - Public `/health` plus API-key-protected application endpoints.
 - Stable `/interact`, `/brief`, and `/status` paths plus versioned lower-level
   availability, scheduling, and Daily Brief endpoints.
+- Optional `/v1/conversation` with persistent multi-turn text sessions,
+  client-message idempotency, structured results, and degraded fallbacks.
 - Dependency-free HTTP-only CLI with REPL, one-shot requests, brief/status/health
-  commands, environment/argument configuration, debug JSON, and friendly errors.
+  commands, explicit conversation/session mode, debug JSON, and friendly errors.
 
 ### Intake
 
@@ -29,6 +31,23 @@ existing functionality elsewhere.
 - Today/tomorrow and morning/afternoon/evening structured time constraints.
 - Vikunja task creation in a configured default project and safe task reuse for
   schedule-by-title flows.
+- Shared `execute_structured_intent` path used by legacy intake and conversation
+  tools without a second model interpretation pass.
+
+### Conversation and persistent context
+
+- Provider-neutral conversation message/tool/result/usage/error boundary.
+- Gemini Interactions adapter using only Beacon-owned high-level function tools.
+- Strict local tool validation and deterministic mapping to existing intents.
+- Same-interaction natural-language rendering of authoritative Beacon results.
+- Bounded history, model/tool rounds, malformed repair, pre-execution retry, and
+  side-effect submissions.
+- SQLite session/turn/message persistence with per-session serialization and
+  idempotent client-message replay.
+- Explicit Context Registry entities, aliases, facts, relationships, provenance,
+  deterministic resolution, and soft forgetting.
+- Additive migrations in the existing SQLite database at `/data/beacon.db`,
+  persisted by the `beacon_data` named volume.
 
 ### Scheduling
 
@@ -55,8 +74,10 @@ existing functionality elsewhere.
 
 ### State and lifecycle
 
-- No internal database, persistent action journal, request idempotency key, or
-  durable audit trail.
+- No general action journal or request idempotency for legacy `/interact`.
+  Conversation message idempotency is scoped to one session.
+- No automated abandoned-turn recovery after abrupt process death; uncertain
+  execution remains locked rather than risking a duplicate write.
 - Editable event-description marker is the only task/work-block linkage.
 - Duplicate search has a finite ±365-day window around resolved bounds.
 - Search/create/update is not atomic; concurrent/retried requests can race.
@@ -74,7 +95,7 @@ existing functionality elsewhere.
 
 ### Operations and integrations
 
-- Synchronous external I/O with per-adapter timeouts but no shared retry,
+- Synchronous life-management I/O with per-adapter timeouts but no shared retry,
   backoff, circuit breaker, or structured observability layer.
 - One shared API key with no client identity or read/write scopes.
 - No background jobs, subscriptions, automatic Daily Brief delivery, reminder
@@ -86,8 +107,8 @@ existing functionality elsewhere.
 
 ### User interfaces
 
-- CLI is intentionally minimal: no persistent history, completion, colors,
-  rich rendering, or date override for `--brief`.
+- CLI is intentionally minimal: conversation history is server-side only; there
+  is no completion, color, rich rendering, or date override for `--brief`.
 - No native web/mobile/voice/Telegram interface, n8n workflow, or inbound Home
   Assistant command adapter.
 
@@ -96,7 +117,8 @@ existing functionality elsewhere.
 Priority order should preserve the architecture boundary: strengthen reliable
 deterministic execution before adding more channels or intents.
 
-1. Add persistent request/action idempotency and provenance for mutating intake.
+1. Extend persistent request/action idempotency and provenance to legacy and
+   non-conversation mutating intake.
 2. Expand scheduling/interval/DST/concurrency edge coverage and add opt-in live
    integration contract tests.
 3. Define user-approved automatic trigger and rescheduling policy.
@@ -115,8 +137,9 @@ deterministic execution before adding more channels or intents.
   adapters.
 - User-configurable scoring profiles and explicit task-splitting rules.
 - A richer deterministic temporal parser with clarification-first behavior.
-- Additional interpretation providers, including local/self-hosted models.
-- Context registry and broader Home Assistant/workflow integrations.
+- Additional conversation/interpretation providers, including local models.
+- Passive context learning only after explicit provenance, review, and conflict
+  policy exists; Phase 1 remains explicit-only.
 - Dedicated web, mobile, voice, or messaging interfaces that remain thin API
   clients.
 

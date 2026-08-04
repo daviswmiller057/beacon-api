@@ -93,6 +93,28 @@ execution policy. The adapter sends the message, an interpretation instruction,
 and the serialized `StructuredIntent` JSON schema; output is validated before
 planning.
 
+### Text conversation settings
+
+| Variable | Default | Validation/behavior |
+|---|---|---|
+| `CONVERSATION_ENABLED` | `false` | Enables `POST /v1/conversation`; a disabled instance does not require Gemini. |
+| `CONVERSATION_PROVIDER` | `gemini` | Current provider allowlist contains only `gemini`. |
+| `CONVERSATION_MODEL` | `gemini-3.6-flash` | Configurable Gemini text model for conversation. |
+| `CONVERSATION_PROVIDER_TIMEOUT_SECONDS` | `30` | Per-provider-call timeout, greater than zero and at most 120. |
+| `CONVERSATION_PROVIDER_MAX_RETRIES` | `1` | At most one retry, only for eligible failures before Beacon execution. |
+| `CONVERSATION_MAX_HISTORY_MESSAGES` | `24` | Recent normalized messages sent to Gemini; older messages remain stored. |
+| `CONVERSATION_MAX_TOOL_ROUNDS` | `2` | Initial selection plus one result or repair continuation. |
+| `CONVERSATION_MAX_SIDE_EFFECT_INTENTS` | `1` | Fixed safety limit per user turn. |
+| `CONVERSATION_MAX_MALFORMED_REPAIRS` | `1` | Maximum local-validation repair continuation. |
+| `CONVERSATION_MAX_INPUT_LENGTH` | `4000` | Runtime input-character limit; absolute API maximum is 16000. |
+| `CONVERSATION_MAX_OUTPUT_LENGTH` | `4000` | Maximum accepted human-facing output characters. |
+| `CONVERSATION_MAX_OUTPUT_TOKENS` | `1024` | Provider output-token budget. |
+
+The conversation layer reuses `GEMINI_API_KEY` and `CONTEXT_DATABASE_PATH`.
+When enabled, a missing key fails startup clearly. Compose forwards these safe
+settings and keeps the database at `/data/beacon.db` in `beacon_data`. See
+[Text conversation](conversation.md).
+
 ### Daily Brief settings
 
 | Variable | Default | Validation/behavior |
@@ -131,6 +153,7 @@ Startup fails rather than serving a misleadingly healthy process when:
 - `BEACON_TIMEZONE` cannot be loaded;
 - `BEACON_CALENDARS` contains no non-empty names;
 - Gemini mode is selected without `GEMINI_API_KEY`.
+- text conversation is enabled without `GEMINI_API_KEY`.
 
 `/health` becomes available only after application startup succeeds. It checks
 the Beacon HTTP process, not Vikunja, Nextcloud, Gemini, Waze, or Home Assistant.

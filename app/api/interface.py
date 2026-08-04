@@ -119,5 +119,9 @@ def service_status() -> ServiceStatusResponse:
             ),
             "travel": settings.daily_brief_travel_enabled,
         },
-        interaction_modes=["natural_language", "structured_intent"],
+        interaction_modes=(
+            ["natural_language", "structured_intent", "conversation"]
+            if settings.conversation_enabled
+            else ["natural_language", "structured_intent"]
+        ),
     )

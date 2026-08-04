@@ -9,6 +9,7 @@ Implemented today:
 - continuously running Docker service with restart and health-check policy;
 - public health check and API-key-protected business endpoints;
 - one top-level interaction endpoint for natural-language or pre-structured intent;
+- an optional persistent, bidirectional Gemini text conversation endpoint;
 - provider-neutral intake with Gemini structured output and deterministic action plans;
 - a persistent Context Registry for explicitly taught aliases, facts, and relationships;
 - Vikunja task creation through deterministic intake execution;
@@ -67,6 +68,7 @@ Endpoints:
 - `GET /status`
 - `GET /brief`
 - `POST /interact`
+- `POST /v1/conversation`
 - `POST /v1/availability`
 - `POST /v1/schedule/task/{task_id}`
 - `GET /v1/brief/daily`
@@ -82,6 +84,9 @@ curl -sS http://localhost:8000/interact \
 ```
 
 See the [Interaction guide](docs/interaction.md) and [API reference](docs/api-reference.md).
+The optional [Text conversation layer](docs/conversation.md) uses one model tool
+call, the same deterministic planner/executor, and the same model interaction to
+render authoritative results. The LLM never directly modifies external systems.
 
 For a terminal interface, configure `BEACON_API_URL` and `BEACON_API_KEY`, then
 run `python -m app.cli`. Interactive commands and one-shot usage are documented

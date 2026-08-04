@@ -97,6 +97,66 @@ def test_interact_constructs_json_request_and_authentication_header():
     assert timeout == 4.5
 
 
+def test_conversation_constructs_idempotent_session_request():
+    opener = RecordingOpener(
+        {"reply": "Synthetic reply", "session_id": "session-1"}
+    )
+    client = BeaconClient(config(), opener=opener)
+
+    response = client.conversation(
+        "Follow up", session_id="session-1", client_message_id="message-2"
+    )
+
+    assert response["reply"] == "Synthetic reply"
+    request, _ = opener.calls[0]
+    assert request.full_url.endswith("/v1/conversation")
+    assert json.loads(request.data) == {
+        "message": "Follow up",
+        "client_message_id": "message-2",
+        "session_id": "session-1",
+    }
+
+
+def test_conversation_response_exposes_session_for_follow_up():
+    from app.cli import format_response
+
+    assert format_response(
+        "conversation", {"reply": "Synthetic reply", "session_id": "session-9"}
+    ) == "Synthetic reply\nSession: session-9"
+
+
+def test_one_shot_conversation_mode_preserves_session_and_message_ids(
+    monkeypatch, capsys
+):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, loaded_config):
+            self.config = loaded_config
+
+        def conversation(self, message, *, session_id, client_message_id):
+            calls.append((message, session_id, client_message_id))
+            return {"reply": "Follow-up complete", "session_id": session_id}
+
+    monkeypatch.setattr("app.cli.BeaconClient", FakeClient)
+    assert (
+        main(
+            [
+                "--conversation",
+                "--session-id",
+                "session-1",
+                "--client-message-id",
+                "message-2",
+                "Follow",
+                "up",
+            ]
+        )
+        == 0
+    )
+    assert calls == [("Follow up", "session-1", "message-2")]
+    assert "Session: session-1" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     ("method_name", "path"),
     [("brief", "/brief"), ("status", "/status")],
