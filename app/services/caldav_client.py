@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
@@ -6,7 +7,7 @@ from zoneinfo import ZoneInfo
 import caldav
 from caldav.lib import error as caldav_error
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.models import BriefCalendarEvent, BusyInterval, CalendarEventResult
 
 
@@ -30,8 +31,8 @@ class CalendarEventMatch:
 
 
 class CalDAVService:
-    def __init__(self) -> None:
-        self.settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
 
     def _get_client(self) -> caldav.DAVClient:
         return caldav.DAVClient(
@@ -115,6 +116,7 @@ class CalDAVService:
             title=title,
             start_iso=event_start,
             end_iso=event_end,
+            location=str(component.get("LOCATION", "")).strip() or None,
         )
 
     def fetch_busy_intervals(
@@ -278,6 +280,49 @@ class CalDAVService:
         )
         return matches[0].result if matches else None
 
+    def find_fixed_events(
+        self,
+        calendar_name: str,
+        title: str,
+        start: datetime,
+        end: datetime,
+    ) -> list[CalendarEventResult]:
+        calendar, resolved_name = self._find_calendar(calendar_name)
+        timezone = ZoneInfo(self.settings.beacon_timezone)
+        wanted_title = self._normalize_title(title)
+        wanted_start = self._to_datetime(start, timezone)
+        wanted_end = self._to_datetime(end, timezone)
+        matches: list[CalendarEventResult] = []
+        events = calendar.search(
+            start=wanted_start,
+            end=wanted_end,
+            event=True,
+            expand=True,
+        )
+        for event in events:
+            component = event.icalendar_component
+            if component is None or component.name != "VEVENT":
+                continue
+            description = str(component.get("DESCRIPTION", ""))
+            if self._task_id_from_description(description) is not None:
+                continue
+            event_start, event_end = self._event_times(component, timezone)
+            event_title = str(component.get("SUMMARY", ""))
+            if (
+                self._normalize_title(event_title) == wanted_title
+                and event_start == wanted_start
+                and event_end == wanted_end
+            ):
+                matches.append(
+                    self._event_result(
+                        event,
+                        component,
+                        resolved_name,
+                        title,
+                    )
+                )
+        return matches
+
     def create_event(
         self,
         calendar_name: str,
@@ -285,15 +330,21 @@ class CalDAVService:
         description: str,
         start: datetime,
         end: datetime,
+        location: str | None = None,
     ) -> CalendarEventResult:
         if end <= start:
             raise ValueError("Calendar event end must be after its start")
         calendar, resolved_name = self._find_calendar(calendar_name)
+        event_data = {
+            "dtstart": start,
+            "dtend": end,
+            "summary": title,
+            "description": description,
+        }
+        if location:
+            event_data["location"] = location
         event = calendar.add_event(
-            dtstart=start,
-            dtend=end,
-            summary=title,
-            description=description,
+            **event_data,
         )
         component = event.icalendar_component
         uid = (
@@ -309,7 +360,12 @@ class CalDAVService:
             title=title,
             start_iso=start,
             end_iso=end,
+            location=location,
         )
+
+    @staticmethod
+    def _normalize_title(value: str) -> str:
+        return " ".join(re.sub(r"[^\w]+", " ", value.casefold()).split())
 
     def update_event(
         self,

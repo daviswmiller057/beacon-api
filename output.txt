@@ -1,12 +1,210 @@
-Everything in the remaining Beacon working tree has been committed and pushed to `origin/main` using authenticated Git.
+# Beacon start-only calendar-event implementation report
 
-Included:
+## 1. Root cause
 
-- the minimal Beacon CLI implementation;
-- CLI tests and implementation report;
-- CLI usage documentation;
-- root README, intake architecture, and architecture review updates;
-- the expanded `.env.example` with placeholder-only interpreter and project settings;
-- this `output.txt` report.
+Two independent gaps prevented the reported request from succeeding end to end:
 
-The previously pushed `docs/` commit remains on `main`. Validation completed before publication: `git diff --check`, Python compilation, 17 CLI tests, and the broad compatible suite with 75 passing tests and 4 pre-existing Python 3.14 `TestClient` cases deselected.
+1. `CalendarEventService.create_fixed_event` treated every missing `end` as a
+   validation error and returned `Calendar event end time is required.` It had
+   no deterministic normalization policy for an explicit duration or the
+   one-hour default.
+2. The deterministic rules interpreter recognized full month names without
+   ordinal suffixes, so `Aug 4th` was not recognized as an event date. With the
+   default rules provider, `Dr Morland Aug 4th at 14:00` therefore failed before
+   planning.
+
+## 2. Architectural implementation
+
+The one-hour policy lives in one place:
+`CalendarEventService._normalize_bounds` in
+`app/services/calendar_events.py`. It runs before routing, duplicate lookup,
+conflict lookup, location resolution, or CalDAV creation.
+
+The deterministic precedence is:
+
+1. A valid explicit start and explicit end preserve both values.
+2. A valid explicit start and explicit duration derive the end with
+   `timedelta(minutes=duration_minutes)`.
+3. A valid explicit start with neither derives the end with
+   `timedelta(hours=1)`.
+4. A missing start remains a validation error.
+5. An explicit end at or before the start remains a validation error even if a
+   duration is also present.
+
+The interpreter does not fabricate an end. `StructuredIntent.end_iso` remains
+`None` for a start-only request, making the accepted user input observable.
+`ActionPlanner` and `ActionExecutor` carry an explicitly supplied
+`duration_minutes` to the calendar service, where the single normalization
+policy is applied. This is provider-neutral and does not depend on Gemini.
+
+The rules parser was narrowly extended to recognize abbreviated month names,
+ordinal day suffixes, and explicit fixed-event durations. The Gemini prompt was
+clarified to permit a missing end/duration and leave defaulting to Beacon.
+
+## 3. Files changed for this refinement
+
+- `app/services/calendar_events.py`
+  - Added the single deterministic bound-normalization function.
+  - Added fixed-event duration input and one-hour defaulting.
+- `app/intake/planner.py`
+  - Carries an explicit calendar-event duration into the planned action.
+- `app/intake/executor.py`
+  - Passes the planned duration to `CalendarEventService`.
+- `app/intake/rules.py`
+  - Parses `Aug 4th` and related abbreviated/ordinal dates.
+  - Preserves explicit fixed-event durations as structured data.
+- `app/intake/gemini.py`
+  - Documents that providers must not invent missing event bounds.
+- `tests/test_calendar_event_intake.py`
+  - Added start-only, explicit-end, explicit-duration, missing-start,
+    invalid-chronology, and exact reported-input coverage.
+- `docs/interaction.md`
+- `docs/debugging-notes.md`
+- `docs/decisions.md`
+- `docs/roadmap.md`
+- `docs/data-models.md`
+- `docs/api-reference.md`
+- `INTAKE_ARCHITECTURE.md`
+- `CLI_USAGE.md`
+  - Updated behavior, precedence, examples, troubleshooting, models, and API/CLI
+    usage to describe the one-hour default accurately.
+- `output.txt`
+  - Overwritten with this report as requested.
+
+The branch also contains the pre-existing uncommitted fixed-event and location
+resolution implementation. Those changes were preserved rather than rebuilt or
+discarded.
+
+## 4. Tests added or modified
+
+`tests/test_calendar_event_intake.py` now verifies:
+
+- start without end or duration creates exactly a 60-minute event;
+- an explicit end remains unchanged;
+- an explicit 90-minute duration determines the end;
+- an interpreted 30-minute duration survives planning and execution;
+- missing start fails before CalDAV reads or writes;
+- an explicit end before start is rejected and is not replaced by the default,
+  even when a duration is also present;
+- `Dr Morland Aug 4th at 14:00` becomes `CREATE_CALENDAR_EVENT` with a
+  timezone-aware `2026-08-04T14:00:00-05:00` start, a missing interpreted end,
+  and a created `2026-08-04T15:00:00-05:00` end;
+- existing calendar-event, location-resolution, task, scheduler, API, health,
+  status, and brief behavior continues to pass in the complete suite.
+
+## 5. Commands and exact results
+
+Local focused test:
+
+```bash
+.venv/bin/python -m pytest tests/test_calendar_event_intake.py -q
+```
+
+Result: 33 tests passed (exit 0).
+
+Python 3.12 Docker focused tests:
+
+```bash
+docker run --rm --env-file .env.example -e BEACON_API_KEY=test \
+  -v /home/davism/Projects/Beacon/beacon-api:/workspace \
+  -w /workspace beacon-api-beacon-api:latest \
+  python -m pytest tests/test_calendar_event_intake.py \
+  tests/test_location_resolution.py -q
+```
+
+Result: `40 passed in 1.07s`.
+
+Python 3.12 Docker complete suite:
+
+```bash
+docker run --rm --env-file .env.example -e BEACON_API_KEY=test \
+  -v /home/davism/Projects/Beacon/beacon-api:/workspace \
+  -w /workspace beacon-api-beacon-api:latest \
+  python -m pytest -q
+```
+
+Result: `120 passed in 1.62s`.
+
+Compilation:
+
+```bash
+docker run --rm --env-file .env.example -e BEACON_API_KEY=test \
+  -v /home/davism/Projects/Beacon/beacon-api:/workspace \
+  -w /workspace beacon-api-beacon-api:latest \
+  python -m compileall -q app tests
+```
+
+Result: exit 0, no compilation errors.
+
+Diff validation:
+
+```bash
+git diff --check
+```
+
+Result: exit 0, no whitespace errors.
+
+The repository does not define an additional formatter, linter, type checker,
+Makefile, `pyproject.toml`, `setup.cfg`, or `tox.ini` command.
+
+## 6. Manual CLI verification
+
+The service was rebuilt with:
+
+```bash
+docker compose up -d --build
+```
+
+Compose reported the rebuilt `beacon-api` service healthy. The requested CLI
+was then launched exactly as follows:
+
+```bash
+docker compose exec beacon-api \
+  python -m app.cli \
+  --url http://127.0.0.1:8000 \
+  --timeout 60
+```
+
+Submitted input:
+
+```text
+Dr Morland Aug 4th at 14:00
+```
+
+Observed output:
+
+```text
+Beacon:
+Created calendar event "Dr Morland" on Tuesday, August 4, 2026 from 2:00 PM to 3:00 PM in Personal.
+```
+
+This confirms the live `/interact` pipeline no longer requests an end and uses
+the configured `America/Chicago` offset (`-05:00`) for the exact expected
+14:00–15:00 bounds.
+
+The command created one real event. To remove it in Nextcloud, delete this exact
+item:
+
+- Calendar: `Personal`
+- Title: `Dr Morland`
+- Date: Tuesday, August 4, 2026
+- Time: 2:00 PM–3:00 PM America/Chicago
+
+No second live submission was made, so this verification did not deliberately
+create a duplicate.
+
+## 7. Remaining edge cases and concerns
+
+- The rules interpreter remains intentionally narrow; unsupported or unusable
+  start wording still produces the existing safe unsupported/clarification
+  behavior rather than inventing a start.
+- Explicit durations remain limited to 1–1440 minutes by existing models and
+  deterministic service validation.
+- Naive datetimes use the existing `ZoneInfo` localization behavior. Ambiguous
+  or nonexistent wall-clock times at daylight-saving transitions are not given
+  new conversational disambiguation by this change.
+- Fixed-event duplicate lookup remains non-transactional for simultaneous
+  requests, an existing limitation unrelated to the one-hour default.
+
+No secrets or `.env` credentials were changed or printed. No commit or push was
+performed.

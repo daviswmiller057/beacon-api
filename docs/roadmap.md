@@ -23,12 +23,19 @@ existing functionality elsewhere.
 - Narrow deterministic rules interpreter as the offline default.
 - Optional Gemini structured-output interpreter with independent validation and
   no access to execution services.
-- Validated `CREATE_TASK`, `SCHEDULE_TASK`, `BRIEF`, and `UNKNOWN` intents.
+- Validated `CREATE_CALENDAR_EVENT`, `CREATE_TASK`, `SCHEDULE_TASK`, `BRIEF`,
+  and `UNKNOWN` intents.
 - Deterministic `ActionPlanner`, ordered actions, clarification policy, and
   `ActionExecutor`.
 - Today/tomorrow and morning/afternoon/evening structured time constraints.
 - Vikunja task creation in a configured default project and safe task reuse for
   schedule-by-title flows.
+- Fixed Nextcloud event creation with timezone-aware bounds, deterministic
+  theater/school/personal routing, exact duplicate prevention, and informational
+  cross-calendar overlap warnings.
+- Clean fixed-event title/location/description extraction; provider-neutral
+  physical-place resolution; deterministic confidence/ambiguity handling;
+  virtual-location bypass; and raw-venue fallbacks for no-match/outage.
 
 ### Scheduling
 
@@ -71,6 +78,16 @@ existing functionality elsewhere.
   historical behavior.
 - No automatic watcher, rescheduling policy, or conflict repair.
 - No task update, completion, deletion, or reminder command.
+- Fixed events require an explicit start; a request without an end or duration
+  receives a deterministic one-hour end. There is no event editing, deletion,
+  recurrence, attendee invitation, or automatic relocation.
+- Fixed-event search/create is calendar-local and non-transactional, so
+  simultaneous identical requests can race.
+- Location lookup is request-time and has no persistent venue memory/cache,
+  background retry, coordinate-distance ranking, or conversational follow-up.
+  Its bounded process cache is lost on restart and is not shared across replicas.
+- Nominatim is the only implemented lookup adapter. Public endpoint privacy,
+  identification, rate, and acceptable-use constraints remain operator concerns.
 
 ### Operations and integrations
 

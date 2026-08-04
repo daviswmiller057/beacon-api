@@ -118,6 +118,7 @@ def service_status() -> ServiceStatusResponse:
                 settings.home_assistant_url and settings.home_assistant_token
             ),
             "travel": settings.daily_brief_travel_enabled,
+            "location_lookup": settings.beacon_location_lookup_enabled,
         },
         interaction_modes=["natural_language", "structured_intent"],
     )

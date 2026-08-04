@@ -25,6 +25,14 @@ class Settings(BaseSettings):
         int, Field(ge=0, le=180)
     ] = 15
     beacon_home_location: str | None = None
+    beacon_location_lookup_enabled: bool = False
+    beacon_location_provider: Literal["nominatim"] = "nominatim"
+    beacon_location_api_url: str = "https://nominatim.openstreetmap.org"
+    beacon_location_bias: str | None = None
+    beacon_location_timeout_seconds: Annotated[
+        float, Field(gt=0, le=60)
+    ] = 10.0
+    beacon_location_user_agent: Annotated[str, Field(min_length=1)] = "Beacon/0.3"
     waze_region: str = "US"
     home_assistant_url: str | None = None
     home_assistant_token: str | None = None

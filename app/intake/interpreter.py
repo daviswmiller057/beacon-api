@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Protocol
 
 from app.models import StructuredIntent
@@ -18,6 +19,10 @@ class InterpreterResponseError(InterpreterError):
 class IntentInterpreter(Protocol):
     """Provider-neutral natural-language boundary."""
 
-    def interpret(self, message: str) -> StructuredIntent:
+    def interpret(
+        self,
+        message: str,
+        reference_date: date | None = None,
+    ) -> StructuredIntent:
         """Return one fully validated description of the user's intent."""
         ...

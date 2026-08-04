@@ -11,11 +11,15 @@ flowchart LR
     SI --> P[ActionPlanner]
     P --> AP[ActionPlan]
     AP --> E[ActionExecutor]
+    E --> CE[CalendarEventService]
     E --> V[VikunjaClient]
     E --> S[SchedulerService]
     E --> D[DailyBriefService]
     S --> A[Availability engine]
     S --> C[Nextcloud CalDAV]
+    CE --> LR[LocationResolver]
+    LR --> GP[Nominatim-compatible provider]
+    CE --> C
     V --> VS[Vikunja]
 ```
 
@@ -28,15 +32,22 @@ flowchart LR
   never receives service clients.
 - `RuleBasedIntentInterpreter` is the offline/default narrow interpreter. It
   keeps local development and existing automations useful without an AI key.
-- `StructuredIntent` describes the user's desired outcome: `CREATE_TASK`,
-  `SCHEDULE_TASK`, `BRIEF`, or `UNKNOWN`. Its entity fields are human concepts
-  such as title, deadline, time constraint, and requested duration.
+- `StructuredIntent` describes the user's desired outcome:
+  `CREATE_CALENDAR_EVENT`, `CREATE_TASK`, `SCHEDULE_TASK`, `BRIEF`, or
+  `UNKNOWN`. Its entity fields are human concepts
+  such as clean title, raw location query, description, deadline, time
+  constraint, and requested duration. It does not contain provider payloads.
 - `ActionPlanner` owns deterministic Beacon policy. It resolves supported
   relative-day constraints and turns intent into an ordered `ActionPlan`.
 - `ActionExecutor` performs only the operations authorized by that plan. It
-  coordinates Vikunja, the existing scheduler, and the Daily Brief service.
+  coordinates Vikunja, fixed events, the existing scheduler, and Daily Brief.
 - `SchedulerService` remains the sole owner of availability ranking, calendar
   selection, duplicate prevention, and work-block create/update decisions.
+- `CalendarEventService` separately owns deterministic fixed-event validation,
+  theater/school/personal routing, exact duplicate detection, overlap warnings,
+  location-resolution outcomes, and ordinary CalDAV event creation.
+- `LocationResolver` owns provider-neutral deterministic candidate selection.
+  `NominatimLocationProvider` only performs and normalizes external search.
 - Vikunja and Nextcloud remain the systems of record.
 
 ## Request lifecycle
@@ -63,19 +74,31 @@ For `Schedule lighting paperwork tomorrow`:
 Task-only input such as `Buy Liquid IV tomorrow` plans only `CREATE_TASK`.
 `UNKNOWN` plans only `REQUEST_CLARIFICATION` and performs no external calls.
 
+A fixed commitment such as `AD Players focus call for Holly Street on Monday
+8/10 from 10:00-18:00` plans only `CREATE_CALENDAR_EVENT`. It never creates a
+Vikunja task and never enters the work-block scheduler. The deterministic event
+service receives clean title `Focus call for Holly Street` and raw location query
+`AD Players`, requires both bounds, routes the event, checks duplicates, resolves
+the venue when enabled, checks overlaps, and writes a normal event without a
+Vikunja marker. Ambiguous places return candidates without mutation; no-match or
+provider failure preserves the raw venue and warns.
+
 ## Gemini boundary
 
 Gemini is an interchangeable parser, not an agent. Beacon sends the user text,
 a narrow classification instruction, and the JSON schema for
-`StructuredIntent`. Gemini may classify intent and extract a title, explicit
-date, relative time phrase, duration, or clarification question.
+`StructuredIntent`. Gemini may classify intent and extract a clean title, raw
+location query, user-supplied description, explicit date, relative time phrase,
+duration, or clarification question. It cannot supply a resolved address.
 
 Gemini cannot:
 
-- choose Vikunja projects, calendars, or time slots;
+- choose Vikunja projects, concrete calendar names, or time slots;
+- bypass deterministic fixed-event routing with an arbitrary destination;
 - call Vikunja, CalDAV, or any Beacon service;
 - decide whether a task match is safe;
 - rank availability or apply duplicate policy;
+- call a geocoder, invent an address, or select a place candidate;
 - execute a mutation.
 
 The adapter uses Gemini's `generateContent` structured-output request and then
@@ -88,6 +111,7 @@ The planner is synchronous, deterministic, and free of network or AI calls:
 
 | Intent | Planned operations |
 |---|---|
+| `CREATE_CALENDAR_EVENT` | Validate, route, de-duplicate, and create one normal calendar event |
 | `CREATE_TASK` | Create a Vikunja task |
 | `SCHEDULE_TASK` with title | Reuse one safe match or create a task; schedule it |
 | `SCHEDULE_TASK` with task ID | Fetch/schedule that task |
@@ -101,6 +125,12 @@ being guessed. A scheduled date otherwise uses the existing 09:00–22:00 policy
 and the configured default duration. The planner does not inspect external
 state; safe task matching occurs during execution and ambiguity stops the
 workflow.
+
+For fixed events, the planner preserves the interpreter's start, optional end,
+and optional duration without inventing values. `CalendarEventService` applies
+the sole deterministic bound policy before duplicate lookup or side effects:
+explicit end, else explicit duration, else exactly one hour after the required
+start. Invalid explicit chronology is rejected rather than defaulted.
 
 ## Configuration
 

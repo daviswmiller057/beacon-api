@@ -52,7 +52,9 @@ is not implemented.
 rules interpreter is the default; `GeminiInterpreter` is selected explicitly by
 configuration and uses structured JSON output. Every provider response must pass
 Pydantic validation before planning. Provider output cannot choose projects,
-calendars, time slots, API calls, or execution services.
+concrete calendar names, time slots, API calls, or execution services. A fixed
+event may carry only the constrained theater/school/personal category hint;
+deterministic routing validates and resolves the actual configured calendar.
 
 ## ADR-012: Explicit deterministic action plans
 
@@ -69,3 +71,26 @@ API, uses only the Python standard library, and contains presentation and
 transport concerns only. It must not import the interpreter, planner, executor,
 scheduler, or integration adapters. Other future interfaces should use the same
 API boundary.
+
+## ADR-014: Fixed commitments are ordinary routed calendar events
+
+**Status:** Accepted. `CREATE_CALENDAR_EVENT` is distinct from task creation and
+work-block scheduling. `CalendarEventService` requires an explicit start,
+preserves an explicit end, derives an end from an explicit duration, or defaults
+a start-only event to exactly one hour. It normalizes time in Beacon's timezone,
+routes theater/school/personal categories, checks same-calendar exact
+duplicates, reports cross-calendar overlaps, and creates a normal CalDAV event
+without a Vikunja marker. Fixed commitments are never moved by availability
+ranking. Search/create idempotency is best-effort and non-transactional.
+
+## ADR-015: Provider-neutral, deterministic place resolution
+
+**Status:** Accepted. Natural-language interpreters extract a clean event title,
+raw `location_query`, and user-provided notes but cannot call a geocoder, invent
+an address, or choose a result. `CalendarEventService` checks duplicates before
+lookup and delegates physical candidates to `LocationResolver`.
+`NominatimLocationProvider` normalizes vendor JSON; deterministic scoring selects
+only a high-confidence candidate with a clear lead. Ambiguity clarifies without
+mutation. No-match/outage/disabled lookup writes the raw venue with a warning;
+virtual locations never leave Beacon. Lookup is opt-in and endpoint-configurable
+so self-hosting can replace the public service.

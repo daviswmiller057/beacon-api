@@ -29,6 +29,7 @@ flowchart TD
 
     EXEC --> V["VikunjaClient"]
     EXEC --> S["SchedulerService"]
+    EXEC --> CE["CalendarEventService"]
     EXEC --> DB["DailyBriefService"]
     LOW --> S
     LOW --> AV["Availability engine"]
@@ -36,6 +37,8 @@ flowchart TD
 
     S --> AV
     S --> C["CalDAVService"]
+    CE --> LR["LocationResolver"]
+    CE --> C
     DB --> C
     DB --> V
     DB --> W["WazeClient"]
@@ -45,6 +48,7 @@ flowchart TD
     C --> NC["Nextcloud\ncalendar truth"]
     W --> WZ["Waze Live Map"]
     HA --> HAS["Home Assistant state API"]
+    LR --> GEO["Nominatim-compatible place API"]
     IP -. "gemini mode only" .-> G["Gemini generateContent"]
 ```
 
@@ -100,7 +104,8 @@ rejects missing required values before the service can start.
   relative dates, part-of-day windows, and clarification for unsupported time
   constraints.
 - `app/intake/executor.py`: executes only planned actions, resolves safe task
-  reuse, delegates scheduling and brief generation, and creates response data.
+  reuse, delegates fixed events, scheduling, and brief generation, and creates
+  response data.
 
 ### Domain services
 
@@ -109,6 +114,12 @@ rejects missing required values before the service can start.
 - `app/services/scheduler.py`: owns bounds, destination selection, duplicate
   lifecycle, selected-slot choice, and create/update/no-op/recommendation
   decisions.
+- `app/services/calendar_events.py`: owns fixed-event validation, deterministic
+  category routing, exact duplicate detection, location-resolution outcomes,
+  cross-calendar overlap warnings, and normal-event CalDAV creation.
+- `app/services/location.py`: provider-neutral resolver/provider protocols,
+  deterministic candidate ranking, confidence/ambiguity policy, and resolver
+  construction from settings.
 - `app/services/daily_brief.py`: read-only aggregation, task ordering, travel and
   overlap conflict detection, partial-failure warnings, and deterministic text.
 
@@ -117,9 +128,12 @@ rejects missing required values before the service can start.
 - `app/services/vikunja_client.py`: task retrieval, paging, normalization, and
   task creation in the configured default project.
 - `app/services/caldav_client.py`: calendar discovery, event/busy reads, exact
-  task-marker lookup, work-block creation, and verified in-place updates.
+  task-marker and fixed-event lookup, normal/work-block creation, and verified
+  in-place updates.
 - `app/services/waze_client.py`: optional travel-time and distance normalization.
 - `app/services/home_assistant_client.py`: optional read of one weather entity.
+- `app/services/nominatim.py`: Nominatim-compatible HTTP search and normalization
+  into vendor-neutral location candidates; it does not select a winner.
 
 ## Request paths
 
@@ -134,7 +148,7 @@ CLI or HTTP caller
   -> deterministic ActionPlanner
   -> ActionPlan
   -> ActionExecutor
-  -> Vikunja / SchedulerService / DailyBriefService
+  -> Vikunja / CalendarEventService / SchedulerService / DailyBriefService
   -> InteractResponse
   -> client formatting
 ```
@@ -142,6 +156,14 @@ CLI or HTTP caller
 No interpreter can invoke integrations. Even in Gemini mode, model output is
 validated as `StructuredIntent` before the planner sees it. The planner, not the
 model, chooses allowed operations and supported scheduling windows.
+
+Fixed commitments follow the same path. The interpreter supplies typed event
+facts; the planner authorizes one event action; `CalendarEventService` validates
+times, chooses a configured category calendar deterministically, detects exact
+duplicates, resolves an optional physical venue through `LocationResolver`,
+checks overlaps, then uses the shared CalDAV adapter. Ambiguous places clarify
+without mutation; lookup failure falls back to the raw venue. The availability
+engine is not involved and the event carries no Vikunja task marker.
 
 ### Explicit scheduling
 
@@ -178,6 +200,7 @@ Beacon has no internal database.
 | Task-to-work-block link | Exact `Vikunja task ID: <id>` line in event description |
 | Runtime configuration and secrets | Environment or uncommitted `.env` |
 | Request/response data | In memory for the lifetime of a request |
+| Place candidates and resolution evidence | In memory for the lifetime of a request; external provider remains its own data controller |
 
 `get_settings()` is cached, but this is configuration caching rather than
 durable domain state. `actions_taken` is returned to the caller and is not an
@@ -197,6 +220,10 @@ requests can defeat idempotency. Search/create/update is not transactional.
   scopes or per-client identities.
 - Gemini receives its own API key, user text, instructions, and an intent JSON
   schema. It does not receive Vikunja, Nextcloud, Home Assistant, or Beacon keys.
+- When physical lookup is explicitly enabled, the configured place endpoint
+  receives only the raw venue query plus geographic bias and the configured user
+  agent. It does not receive event description, calendar contents, Beacon API
+  key, or integration credentials. Virtual locations never trigger lookup.
 - The CLI reads its Beacon key from `BEACON_API_KEY` or `--api-key`, never stores
   it, and does not print it. Environment configuration is preferred because a
   command-line key may appear in shell history or process listings.

@@ -69,9 +69,13 @@ The offline interpreter intentionally supports only a minimum useful language:
 - scheduling commands beginning with `schedule` or `please schedule`;
 - scheduling by ID, such as `Schedule task 42` or `Schedule #42`;
 - scheduling by title, such as `Schedule lighting paperwork tomorrow`;
-- task creation beginning with `add`, `create`, `remember`, or `buy`, optionally
-  prefixed by `please`;
-- `today` and `tomorrow` date extraction;
+- fixed events with a supported date and a start time introduced by `from` or
+  `at`; a range ending with `-`, `to`, or `until` supplies an explicit end;
+- numeric dates (`8/10`, optional year and matching weekday), full or abbreviated
+  month names with optional ordinal suffixes (`August 4`, `Aug 4th`), `today`,
+  `tomorrow`, and the next named weekday;
+- task creation beginning with `add`, `create`, `remember`, `buy`, `prepare`, or
+  `finish`, optionally prefixed by `please`;
 - durations such as `for 30 minutes`, `for 90 mins`, `for 1.5 hours`, or
   `for 2 hrs`.
 
@@ -79,6 +83,12 @@ Examples:
 
 | Input | Resulting intent |
 |---|---|
+| `AD Players focus call for Holly Street on Monday 8/10 from 10:00-18:00` | `CREATE_CALENDAR_EVENT`; title `Focus call for Holly Street`; location query `AD Players`; theater; August 10 from 10:00 to 18:00 |
+| `Rehearsal Tuesday from 7pm to 10pm` | `CREATE_CALENDAR_EVENT`, next Tuesday from 19:00 to 22:00 |
+| `Carmen rehearsal at Moores Opera House Tuesday from 7pm to 10pm` | `CREATE_CALENDAR_EVENT`; title `Carmen rehearsal`; location query `Moores Opera House` |
+| `Load-in at Miller Outdoor Theatre Friday from 8am to 4pm, use the stage door` | `CREATE_CALENDAR_EVENT`; title `Load-in`; venue extracted; instruction moved to description |
+| `Zoom meeting with Nate Wednesday from 2pm to 3pm` | `CREATE_CALENDAR_EVENT`; title `Meeting with Nate`; virtual location `Zoom` |
+| `Dr Morland Aug 4th at 14:00` | `CREATE_CALENDAR_EVENT`; August 4 from 14:00 to the deterministic default of 15:00 |
 | `Buy Liquid IV tomorrow` | `CREATE_TASK`, title `Buy Liquid IV`, tomorrow's date |
 | `Create a task to file taxes` | `CREATE_TASK`, title `file taxes` |
 | `Schedule lighting paperwork tomorrow` | `SCHEDULE_TASK` by title, tomorrow, configured default duration |
@@ -86,10 +96,19 @@ Examples:
 | `What's on tomorrow?` | `BRIEF`, tomorrow |
 | `status` | `BRIEF`, default date |
 
-The rules interpreter does not infer part-of-day phrases. Its generated intents
-use the `deadline` field directly. Unsupported non-scheduling/non-creation input
-returns `400` and performs no action. An empty extracted title also returns a
-specific `400` prompt.
+The rules interpreter does not infer part-of-day phrases. Task intents use the
+`deadline` field; fixed events use timezone-aware `start_iso` and optional
+`end_iso`. The interpreter preserves whether the user supplied an end or a
+duration. During deterministic execution, Beacon applies this precedence:
+
+1. preserve an explicit end exactly;
+2. otherwise derive the end from an explicit duration;
+3. otherwise set the end to exactly one hour after the valid start.
+
+A missing or unusable start still returns an error without side effects. An
+explicit end that is not later than the start is rejected; it is never replaced
+by the default. Unsupported input returns `400` and performs no action. An empty
+extracted title also returns a specific `400` prompt.
 
 Duration conversion rounds hours to whole minutes and enforces `1..1440`. When a
 schedule command omits duration, Beacon uses
@@ -99,7 +118,7 @@ schedule command omits duration, Beacon uses
 
 Gemini mode sends:
 
-- a fixed system instruction defining Beacon's four intents and prohibiting
+- a fixed system instruction defining Beacon's five intents and prohibiting
   service/calendar/action choices;
 - the user's message;
 - the serialization JSON schema for `StructuredIntent`;
@@ -117,8 +136,10 @@ with a 20-second timeout and `x-goog-api-key` header. The compatibility-only
 Beacon extracts the first candidate's first text part and independently validates
 it with `StructuredIntent.model_validate_json`. HTTP errors, missing/empty text,
 malformed JSON, and semantic validation failures fail closed before planning.
-Gemini cannot call tools or integrations and cannot select a project, calendar,
-slot, or Beacon action.
+Gemini cannot call tools or integrations and cannot select a project, concrete
+calendar name, slot, or Beacon action. It may emit the constrained category hint
+`THEATER`, `SCHOOL`, or `PERSONAL`; deterministic Beacon routing remains
+authoritative.
 
 ## Structured intent contract
 
@@ -126,14 +147,48 @@ Supported intent values are:
 
 | Intent | Required fields | Meaning |
 |---|---|---|
+| `CREATE_CALENDAR_EVENT` | non-empty `title`; execution requires `start_iso` and `end_iso` | Create one fixed Nextcloud commitment. |
 | `CREATE_TASK` | non-empty `title` | Record a Vikunja task. |
 | `SCHEDULE_TASK` | exactly one of `task_id` or `title` | Ensure/resolve a task and schedule work. |
 | `BRIEF` | none | Generate a read-only Daily Brief. |
 | `UNKNOWN` | non-empty `clarification_question` | Ask the user for clarification without side effects. |
 
-Optional user-level fields include `deadline`, `time_constraint`, and
-`duration_minutes`. Legacy input names `action`, `task_title`, and `target_date`
-remain validation aliases, but responses serialize the current names.
+Fixed-event fields are `start_iso`, `end_iso`, optional `calendar_category`,
+raw `location_query`, resolved/caller-supplied `location`, and `description`.
+The interpreter emits `location_query`, not an invented address. Task/work fields are `deadline`,
+`time_constraint`, and `duration_minutes`. Legacy input names `action`,
+`task_title`, and `target_date` remain validation aliases, but responses
+serialize the current names.
+
+### Fixed event, task, or work block?
+
+| User outcome | Intent | External result |
+|---|---|---|
+| Attend a commitment at a fixed time | `CREATE_CALENDAR_EVENT` | Ordinary Nextcloud event; never a fake Vikunja task. |
+| Remember work that must be done | `CREATE_TASK` | Vikunja task; no calendar event. |
+| Reserve flexible time to do work | `SCHEDULE_TASK` | Vikunja task plus a scheduler-managed work block carrying an exact task marker. |
+
+Preparation language remains task-oriented: `Prepare for the Holly Street focus
+call` is a task, while the timed call itself is a fixed event. Beacon never runs
+fixed commitments through availability ranking and never moves them to avoid a
+conflict.
+
+### Clean title and supporting details
+
+For fixed events, interpreters separate what the commitment is from its metadata.
+Venue names, addresses, dates, times, routing labels, and clear logistical notes
+do not remain in the title. Show and project context remains. For example,
+`AD Players focus call for Holly Street` becomes title
+`Focus call for Holly Street` plus location query `AD Players`; `Holly Street`
+is meaningful subject matter and is not stripped.
+
+The rules provider recognizes explicit `at`, `in the`, and `on` venue phrases,
+the implicit `AD Players` prefix required by the primary workflow, and the
+documented virtual platforms. Gemini receives equivalent extraction instructions
+and the same provider-neutral schema. Clear trailing instructions beginning with
+`use`, `bring`, `park`, `call`, or `meet` can become `description`; neither
+provider invents instructions. Ordinary task titles are not processed by this
+event-detail cleanup.
 
 `create_event` is accepted for backward-compatible structured callers and is
 excluded from serialized intent/Gemini schema. It can request recommendation
@@ -146,6 +201,7 @@ values:
 
 | Intent | Plan |
 |---|---|
+| `CREATE_CALENDAR_EVENT` | one `CREATE_CALENDAR_EVENT` action carrying interpreted event fields |
 | `CREATE_TASK` | one `CREATE_TASK` action |
 | `SCHEDULE_TASK` by ID | one `SCHEDULE_WORK_BLOCK` action |
 | `SCHEDULE_TASK` by title | `CREATE_TASK` with safe reuse, then `SCHEDULE_WORK_BLOCK` |
@@ -186,6 +242,67 @@ Task-only requests call `VikunjaClient.create_task`. Creation requires
 `VIKUNJA_DEFAULT_PROJECT_ID`. A supplied date becomes a due time of 22:00 in
 `BEACON_TIMEZONE`; no date creates a task without a due date.
 
+### Fixed calendar event creation
+
+`CalendarEventService` owns deterministic validation, bound normalization, and
+routing. It requires a non-empty title and start; converts naive inputs to
+`BEACON_TIMEZONE` and aware inputs into that timezone; preserves an explicit
+end, otherwise applies an explicit duration, otherwise defaults to one hour;
+and rejects an end that is not later than the start before any CalDAV read or
+write.
+
+Routing uses normalized title, location, and description text first, then the
+constrained interpreter hint, then `personal`:
+
+- theater terms include AD Players, focus, rehearsal, performance, tech,
+  load-in, and strike;
+- school terms include school, class, exam, lecture, and UH;
+- everything else routes to personal.
+
+The resulting category must match a configured `BEACON_CALENDARS` display name
+after trimming and case-folding. If it does not, Beacon returns `422`; it never
+falls back to an unrelated configured calendar.
+
+Before creation, Beacon searches the selected calendar for an ordinary event
+with the same normalized title and exact start/end instants. An exact match
+returns `EXISTING` without writing. Events carrying a numeric
+`Vikunja task ID: <id>` marker are deliberately excluded so work blocks and
+fixed commitments remain distinct. Search then creation is idempotent for
+normal retries but is not transactional against simultaneous requests.
+
+After duplicate detection, a raw physical `location_query` is passed to the
+provider-neutral `LocationResolver`. Duplicate identity deliberately remains
+calendar + normalized clean title + exact bounds, so provider formatting changes
+cannot create a second event. A caller-supplied resolved `location` bypasses
+lookup. Requests without a location also bypass it. Zoom, Google Meet, Microsoft
+Teams/Teams, Discord, Phone call, and Online are canonicalized locally and are
+never sent to a physical-place provider.
+
+The deterministic resolver ranks provider candidates using normalized exact/name
+containment, query-token overlap, venue-like classification, and configured
+geographic-bias overlap. It requires both a high score and a clear lead:
+
+- high confidence: use canonical name plus formatted address in ICS `LOCATION`;
+- ambiguous: return `CLARIFICATION` with up to three candidates and perform no
+  CalDAV mutation;
+- no match: create with the raw venue name and warn that no address was verified;
+- timeout, rate limit, network failure, or outage: create with the raw venue and
+  warn that resolution was unavailable.
+
+When the provider supplies attribution, Beacon includes it as a normal notice
+after the confirmation (not as an error warning). Nominatim resolutions carry
+`© OpenStreetMap contributors`.
+
+Physical lookup is opt-in. When disabled, Beacon preserves the raw venue and
+warns that it is unverified. `BEACON_LOCATION_BIAS` is preferred geographic
+context; `BEACON_HOME_LOCATION` is used as fallback context when no dedicated
+bias is configured.
+
+Beacon also reads overlapping events across configured calendars. Overlap is
+strict (`existing.start < new.end` and `existing.end > new.start`), so adjacent
+events are not conflicts. Conflicts are returned as warnings after the fixed
+event is created; they do not move or block it.
+
 ### Safe title reuse for scheduling
 
 For a schedule-by-title plan, the executor lists incomplete Vikunja tasks and
@@ -217,12 +334,15 @@ Every `200` includes:
 - `intent`: accepted validated intent;
 - `plan`: the deterministic plan;
 - `actions_taken`: ordered audit-shaped execution results;
-- optionally `task`, `schedule`, or `brief` with complete typed details.
+- optionally `task`, `schedule`, `brief`, or `calendar_event` with complete
+  typed details.
 
 Action records currently use:
 
 | Action | Status examples | Details |
 |---|---|---|
+| `calendar_event_created` | `CREATED`, `EXISTING` | calendar, start/end, conflict count |
+| `calendar_event_clarification` | `PENDING` | raw query and candidate count; no mutation |
 | `task_created` | `CREATED` | target `vikunja-task:<id>` |
 | `task_scheduled` | `NEW`, `UPDATED`, `UNCHANGED`, `RECOMMENDATION_ONLY` | selected start/end |
 | `brief_generated` | `READ_ONLY` | date and headline counts |
@@ -234,7 +354,15 @@ Action records currently use:
 
 - The endpoint is command-oriented, not open-ended conversation; it has no
   session or conversational memory.
-- Natural-language rules support only today/tomorrow and a narrow grammar.
+- Natural-language rules remain deliberately narrow; they do not support
+  recurrence, invitations, or arbitrary date prose.
+- Fixed-event creation requires a usable start. When neither an explicit end nor
+  duration is present, Beacon uses a one-hour event. Beacon does not edit/delete
+  events, invite attendees, or automatically reschedule.
+- Fixed-event duplicate search/create is not atomic; simultaneous identical
+  requests can race even though ordinary repeated requests are idempotent.
+- Address resolution has no persistent venue memory or background retry. A
+  provider outage falls back safely for that request.
 - Gemini calls are synchronous and have no retry/backoff.
 - Task creation has no persistent request idempotency key; retried/concurrent
   create requests can duplicate tasks.

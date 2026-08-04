@@ -15,6 +15,7 @@ from app.intake.interpreter import IntentInterpreter
 from app.intake.planner import ActionPlanner
 from app.intake.rules import RuleBasedIntentInterpreter
 from app.models import InteractRequest, InteractResponse
+from app.services.calendar_events import CalendarEventService
 from app.services.daily_brief import DailyBriefService
 from app.services.scheduler import SchedulerService
 from app.services.vikunja_client import VikunjaClient
@@ -27,6 +28,7 @@ class InteractionService:
         vikunja: VikunjaClient | None = None,
         scheduler: SchedulerService | None = None,
         daily_brief: DailyBriefService | None = None,
+        calendar_events: CalendarEventService | None = None,
         interpreter: IntentInterpreter | None = None,
         planner: ActionPlanner | None = None,
         executor: ActionExecutor | None = None,
@@ -37,6 +39,9 @@ class InteractionService:
         self.vikunja = vikunja or VikunjaClient(self.settings)
         self.scheduler = scheduler or SchedulerService()
         self.daily_brief = daily_brief or DailyBriefService()
+        self.calendar_events = calendar_events or CalendarEventService(
+            settings=self.settings
+        )
         self.clock = clock or (lambda timezone: datetime.now(timezone))
         self.interpreter = interpreter or self._build_interpreter()
         self.planner = planner or ActionPlanner(self.settings)
@@ -44,12 +49,16 @@ class InteractionService:
             vikunja=self.vikunja,
             scheduler=self.scheduler,
             daily_brief=self.daily_brief,
+            calendar_events=self.calendar_events,
         )
 
     def interact(self, request: InteractRequest) -> InteractResponse:
         timezone = ZoneInfo(self.settings.beacon_timezone)
         now = self.clock(timezone).astimezone(timezone)
-        intent = request.intent or self.interpreter.interpret(request.message or "")
+        intent = request.intent or self.interpreter.interpret(
+            request.message or "",
+            reference_date=now.date(),
+        )
         plan = self.planner.plan(intent, now.date())
         return self.executor.execute(plan, now, timezone)
 
@@ -62,5 +71,6 @@ class InteractionService:
                 api_key=self.settings.gemini_api_key,
                 model=self.settings.gemini_model,
                 base_url=self.settings.gemini_api_base_url,
+                timezone=self.settings.beacon_timezone,
             )
         raise ValueError(f"Unsupported BEACON_INTERPRETER: {provider}")

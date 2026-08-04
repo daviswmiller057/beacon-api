@@ -92,6 +92,33 @@ execution policy. The adapter sends the message, an interpretation instruction,
 and the serialized `StructuredIntent` JSON schema; output is validated before
 planning.
 
+### Fixed-event location lookup settings
+
+| Variable | Default | Validation/behavior |
+|---|---|---|
+| `BEACON_LOCATION_LOOKUP_ENABLED` | `false` | Enables external physical-place lookup. Disabled requests preserve the raw venue with an unverified-location warning. |
+| `BEACON_LOCATION_PROVIDER` | `nominatim` | Currently the only accepted provider; the calendar service depends on the provider-neutral resolver protocol. |
+| `BEACON_LOCATION_API_URL` | `https://nominatim.openstreetmap.org` | Nominatim-compatible base URL; replace with a self-hosted endpoint without code changes. |
+| `BEACON_LOCATION_BIAS` | unset | Free-text regional context such as `Houston, TX`; preferred over home location for place lookup. |
+| `BEACON_LOCATION_TIMEOUT_SECONDS` | `10` | External request timeout, floating point `>0..60`. |
+| `BEACON_LOCATION_USER_AGENT` | `Beacon/0.3` | Non-empty HTTP user agent. Operators using a public endpoint should set an identifying, policy-compliant value with contact information. |
+| `BEACON_HOME_LOCATION` | unset | Existing setting used as resolver bias only when `BEACON_LOCATION_BIAS` is unset; it remains the Daily Brief travel origin. |
+
+Lookup is opt-in because the raw venue query and configured bias are transmitted
+to the configured endpoint. Nominatim needs no secret. Do not put credentials in
+its URL or user agent. For sustained/private usage, prefer a self-hosted or
+contracted Nominatim-compatible service. The default public host's
+[official usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+currently requires application identification, attribution, cached repeat
+queries, and an absolute maximum of one request per second; it also prohibits
+submitting confidential or personal material. Beacon provides a bounded
+process-local cache, public-host request throttle, and response attribution, but
+the operator remains responsible for policy and licensing compliance.
+
+The startup path validates setting types and the provider literal but does not
+contact the geocoder. Timeout/rate-limit/network failures are handled at request
+time by creating the commitment with its raw venue and a warning.
+
 ### Daily Brief settings
 
 | Variable | Default | Validation/behavior |

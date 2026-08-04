@@ -1,6 +1,10 @@
 # Beacon API
 
-Beacon API is a self-hosted FastAPI service that turns Vikunja tasks into deterministic, conflict-aware Nextcloud calendar work blocks. It reduces executive-function overhead without delegating important decisions to AI: AI may interpret intent, while testable Python services execute scheduling rules.
+Beacon API is a self-hosted FastAPI service that creates fixed Nextcloud
+commitments and turns Vikunja tasks into deterministic, conflict-aware calendar
+work blocks. It reduces executive-function overhead without delegating important
+decisions to AI: AI may interpret intent, while testable Python services validate,
+route, and execute actions.
 
 ## Current state
 
@@ -11,6 +15,9 @@ Implemented today:
 - one top-level interaction endpoint for natural-language or pre-structured intent;
 - provider-neutral intake with Gemini structured output and deterministic action plans;
 - Vikunja task creation through deterministic intake execution;
+- normal Nextcloud fixed-event creation with deterministic calendar routing,
+  clean title/location/description extraction, optional external address
+  resolution, duplicate prevention, and overlap warnings;
 - a dependency-free interactive and one-shot terminal client;
 - top-level deterministic status and Daily Brief endpoints for automations;
 - availability search across configured CalDAV calendars;
@@ -38,6 +45,13 @@ Natural-language intake defaults to the offline rule interpreter. For Gemini,
 set `BEACON_INTERPRETER=gemini`, `GEMINI_API_KEY`, and optionally
 `GEMINI_MODEL`. Set `VIKUNJA_DEFAULT_PROJECT_ID` when intake may create tasks.
 See [Intake Architecture](INTAKE_ARCHITECTURE.md).
+
+Physical venue address lookup is optional and disabled by default. Configure
+the `BEACON_LOCATION_*` settings in `.env.example` to use a public or self-hosted
+Nominatim-compatible endpoint. Enabling it sends the extracted venue query and
+geographic bias to that endpoint; review its current usage/privacy policy and
+set an identifying user agent first. See [Development](docs/development.md) and
+[Integrations](docs/integrations.md).
 
 For the intended always-on deployment:
 

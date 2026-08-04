@@ -168,7 +168,8 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 
 ## Interaction models
 
-`IntentType` has `BRIEF`, `CREATE_TASK`, `SCHEDULE_TASK`, and `UNKNOWN`.
+`IntentType` has `BRIEF`, `CREATE_CALENDAR_EVENT`, `CREATE_TASK`,
+`SCHEDULE_TASK`, and `UNKNOWN`.
 
 ### `StructuredIntent`
 
@@ -179,20 +180,29 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 | `title` | `str \| None` | Length `1..500`; accepts legacy alias `task_title`. |
 | `deadline` | `date \| None` | Explicit/local target date; accepts legacy alias `target_date`. |
 | `time_constraint` | `str \| None` | Length `1..100`; interpreted only by deterministic planner policy. |
-| `duration_minutes` | `int \| None` | When present, `1..1440`. |
+| `duration_minutes` | `int \| None` | Fixed-event or work-block duration when explicitly supplied; `1..1440`. |
+| `start_iso` | `datetime \| None` | Fixed-event start; timezone-aware is preferred. |
+| `end_iso` | `datetime \| None` | Explicit fixed-event end. Execution preserves it; otherwise it uses an explicit duration or the one-hour default. |
+| `calendar_category` | `CalendarCategory \| None` | Constrained `THEATER`, `SCHOOL`, or `PERSONAL` hint; deterministic routing may override it from event text. |
+| `location_query` | `str \| None` | Raw venue/place extracted by an interpreter, length `1..500`; never an invented address. |
+| `location` | `str \| None` | Optional already-resolved fixed-event location for trusted structured callers, length `1..500`. Natural-language interpreters leave this unset. |
+| `description` | `str \| None` | Optional fixed-event description, length `1..5000`. |
 | `clarification_question` | `str \| None` | Length `1..500`; required for `UNKNOWN`. |
 | `create_event` | `bool`, `True` | Compatibility input, excluded from serialized intent and Gemini schema. |
 
-Task creation requires a title. Scheduling requires exactly one task ID or title.
-`UNKNOWN` requires a clarification question. Other optional fields may still be
-present when not used by a particular intent; planner behavior is authoritative.
+Task and fixed-event creation require a title. Scheduling requires exactly one
+task ID or title. `UNKNOWN` requires a clarification question. Fixed-event
+bounds are normalized and validated by deterministic execution: start is
+required; explicit end has precedence over duration; duration has precedence
+over the one-hour default. Other optional fields may still be present when not
+used by a particular intent; planner behavior is authoritative.
 
 ### `PlannedAction` and `ActionPlan`
 
 `ActionPlan` contains the accepted intent and ordered `PlannedAction` values.
-Action types are `CREATE_TASK`, `SCHEDULE_WORK_BLOCK`, `GENERATE_BRIEF`, and
-`REQUEST_CLARIFICATION`. Plan fields are Beacon decisions and are never supplied
-by an interpreter.
+Action types are `CREATE_CALENDAR_EVENT`, `CREATE_TASK`,
+`SCHEDULE_WORK_BLOCK`, `GENERATE_BRIEF`, and `REQUEST_CLARIFICATION`. Plan
+fields are Beacon decisions and are never supplied by an interpreter.
 
 | `PlannedAction` field | Type/default | Meaning |
 |---|---|---|
@@ -202,7 +212,11 @@ by an interpreter.
 | `deadline` | `date \| None` | Task date or date used to create scheduling bounds. |
 | `window_start` | `str \| None` | Planner-chosen daily start such as `12:00`. |
 | `window_end` | `str \| None` | Planner-chosen daily end such as `17:00`. |
-| `duration_minutes` | `int \| None` | When present, `1..1440`. |
+| `duration_minutes` | `int \| None` | Explicit fixed-event duration or planned work-block duration; `1..1440`. |
+| `start_iso` / `end_iso` | `datetime \| None` | Fixed-event bounds copied into the authorized action. |
+| `calendar_category` | `CalendarCategory \| None` | Constrained routing hint, not a concrete CalDAV destination. |
+| `location_query` | `str \| None` | Raw fixed-event venue copied for deterministic resolution. |
+| `location` / `description` | `str \| None` | Optional resolved location and supporting notes. |
 | `create_event` | `bool`, `True` | Whether scheduling may write. |
 | `reuse_existing` | `bool`, `False` | Whether executor should safely resolve title before creation. |
 | `question` | `str \| None` | Clarification text. |
@@ -229,9 +243,35 @@ returned provenance, not persisted audit state.
 | `brief` | `DailyBriefResponse \| None` | Populated for brief actions. |
 | `schedule` | `ScheduleTaskResponse \| None` | Populated for scheduling actions. |
 | `task` | `VikunjaTask \| None` | Created/resolved task where applicable. |
+| `calendar_event` | `CreateCalendarEventResponse \| None` | Created/existing fixed event, or location clarification, with resolution/conflict warnings. |
 
-A clarification response has no external result object. A scheduling flow may
-include both `task` and `schedule`.
+An `UNKNOWN`/time-constraint clarification has no external result object. A
+location-ambiguity clarification has a typed `calendar_event` outcome but no
+created `event`. A scheduling flow may include both `task` and `schedule`.
+
+### Fixed-event response models
+
+`CreateCalendarEventResponse` contains status `CREATED`, `EXISTING`, or
+`CLARIFICATION`; an optional normalized `CalendarEventResult`; zero or more
+`CalendarEventConflict` records; optional `LocationResolution`; user-safe
+`warnings`, attribution `notices`, and an optional clarification question. Each conflict contains
+calendar, title, start, and end. The event model contains UID/href when CalDAV
+supplies them, destination calendar, clean title, timezone-aware bounds, and the
+canonical/raw location written to ICS. `EXISTING` means no create write occurred;
+`CLARIFICATION` has no event and performs no mutation.
+
+### Location resolution models
+
+`LocationResolution.status` is `RESOLVED`, `AMBIGUOUS`, `NOT_FOUND`,
+`UNAVAILABLE`, or `SKIPPED`. It retains the original query, provider name,
+optional attribution, selected `LocationCandidate`, up to three ranked alternatives in normal
+service responses, and a safe detail string. A candidate contains canonical
+name, formatted address, optional latitude/longitude, provider identifier,
+place type, deterministic confidence `0..1`, and matching-evidence labels.
+
+Provider payloads are never exposed directly. Latitude and longitude remain
+structured response data; the current CalDAV adapter writes only the canonical
+text `LOCATION` and does not add `GEO`.
 
 ### `ServiceStatusResponse`
 

@@ -80,6 +80,84 @@ class CalendarEventResult(BaseModel):
     title: str
     start_iso: datetime
     end_iso: datetime
+    location: str | None = None
+
+
+class CalendarCategory(StrEnum):
+    THEATER = "THEATER"
+    SCHOOL = "SCHOOL"
+    PERSONAL = "PERSONAL"
+
+
+class CalendarEventCreateStatus(StrEnum):
+    CREATED = "CREATED"
+    EXISTING = "EXISTING"
+    CLARIFICATION = "CLARIFICATION"
+
+
+class LocationResolutionStatus(StrEnum):
+    RESOLVED = "RESOLVED"
+    AMBIGUOUS = "AMBIGUOUS"
+    NOT_FOUND = "NOT_FOUND"
+    UNAVAILABLE = "UNAVAILABLE"
+    SKIPPED = "SKIPPED"
+
+
+class LocationCandidate(BaseModel):
+    canonical_name: Annotated[str, Field(min_length=1, max_length=500)]
+    formatted_address: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+    latitude: Annotated[float, Field(ge=-90, le=90)] | None = None
+    longitude: Annotated[float, Field(ge=-180, le=180)] | None = None
+    provider_id: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    place_type: str | None = None
+    confidence: Annotated[float, Field(ge=0, le=1)] = 0
+    matching_evidence: list[str] = Field(default_factory=list)
+
+
+class LocationResolution(BaseModel):
+    query: Annotated[str, Field(min_length=1, max_length=500)]
+    status: LocationResolutionStatus
+    provider: str | None = None
+    attribution: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    selected: LocationCandidate | None = None
+    alternatives: list[LocationCandidate] = Field(default_factory=list)
+    detail: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self):
+        if self.status is LocationResolutionStatus.RESOLVED and self.selected is None:
+            raise ValueError("RESOLVED location requires selected candidate")
+        if self.status is LocationResolutionStatus.AMBIGUOUS and not self.alternatives:
+            raise ValueError("AMBIGUOUS location requires alternatives")
+        return self
+
+
+class CalendarEventConflict(BaseModel):
+    calendar: str
+    title: str
+    start_iso: datetime
+    end_iso: datetime
+
+
+class CreateCalendarEventResponse(BaseModel):
+    status: CalendarEventCreateStatus
+    event: CalendarEventResult | None = None
+    conflicts: list[CalendarEventConflict] = Field(default_factory=list)
+    location_resolution: LocationResolution | None = None
+    warnings: list[str] = Field(default_factory=list)
+    notices: list[str] = Field(default_factory=list)
+    clarification_question: str | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self):
+        if self.status is CalendarEventCreateStatus.CLARIFICATION:
+            if self.event is not None or not self.clarification_question:
+                raise ValueError(
+                    "CLARIFICATION requires a question and no calendar event"
+                )
+        elif self.event is None:
+            raise ValueError(f"{self.status.value} requires a calendar event")
+        return self
 
 
 class ScheduleStatus(StrEnum):
@@ -195,6 +273,7 @@ class DailyBriefResponse(BaseModel):
 
 class IntentType(StrEnum):
     BRIEF = "BRIEF"
+    CREATE_CALENDAR_EVENT = "CREATE_CALENDAR_EVENT"
     CREATE_TASK = "CREATE_TASK"
     SCHEDULE_TASK = "SCHEDULE_TASK"
     UNKNOWN = "UNKNOWN"
@@ -221,6 +300,12 @@ class StructuredIntent(BaseModel):
     )
     time_constraint: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
+    start_iso: datetime | None = None
+    end_iso: datetime | None = None
+    calendar_category: CalendarCategory | None = None
+    location_query: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    location: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    description: Annotated[str, Field(min_length=1, max_length=5000)] | None = None
     clarification_question: Annotated[
         str, Field(min_length=1, max_length=500)
     ] | None = None
@@ -237,6 +322,8 @@ class StructuredIntent(BaseModel):
                 )
         if self.intent is IntentType.CREATE_TASK and not self.title:
             raise ValueError("CREATE_TASK requires title")
+        if self.intent is IntentType.CREATE_CALENDAR_EVENT and not self.title:
+            raise ValueError("CREATE_CALENDAR_EVENT requires title")
         if self.intent is IntentType.UNKNOWN and not self.clarification_question:
             raise ValueError("UNKNOWN requires clarification_question")
         return self
@@ -256,6 +343,7 @@ class StructuredIntent(BaseModel):
 
 
 class ActionType(StrEnum):
+    CREATE_CALENDAR_EVENT = "CREATE_CALENDAR_EVENT"
     CREATE_TASK = "CREATE_TASK"
     SCHEDULE_WORK_BLOCK = "SCHEDULE_WORK_BLOCK"
     GENERATE_BRIEF = "GENERATE_BRIEF"
@@ -270,6 +358,12 @@ class PlannedAction(BaseModel):
     window_start: str | None = None
     window_end: str | None = None
     duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
+    start_iso: datetime | None = None
+    end_iso: datetime | None = None
+    calendar_category: CalendarCategory | None = None
+    location_query: str | None = None
+    location: str | None = None
+    description: str | None = None
     create_event: bool = True
     reuse_existing: bool = False
     question: str | None = None
@@ -306,6 +400,7 @@ class InteractResponse(BaseModel):
     brief: DailyBriefResponse | None = None
     schedule: ScheduleTaskResponse | None = None
     task: VikunjaTask | None = None
+    calendar_event: CreateCalendarEventResponse | None = None
 
 
 class ServiceStatusResponse(BaseModel):

@@ -40,6 +40,7 @@ def settings() -> Settings:
         beacon_calendars="personal",
         beacon_schedule_calendar="personal",
         beacon_timezone="America/Chicago",
+        beacon_interpreter="rules",
     )
 
 

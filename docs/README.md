@@ -23,7 +23,7 @@ Choose the path that matches what you are trying to do:
 | Document | Scope |
 |---|---|
 | [Architecture](architecture.md) | Runtime components, request paths, state ownership, security boundaries, and deployment shape. |
-| [Interaction](interaction.md) | `/interact`, the rules and Gemini interpreters, deterministic planning, execution, and clarification. |
+| [Interaction](interaction.md) | `/interact`, fixed events versus tasks/work blocks, clean detail extraction, location resolution, deterministic planning/routing/execution, and clarification. |
 | [Scheduling](scheduling.md) | Exact Vikunja-task-to-Nextcloud-work-block lifecycle. |
 | [Availability engine](availability-engine.md) | Interval normalization, daily windows, candidate generation, scoring, and limitations. |
 | [Daily Brief](daily-brief.md) | Read-only calendar/task/weather/travel aggregation, warnings, conflicts, and summaries. |
@@ -46,12 +46,16 @@ remains the calendar source of truth.
 Implemented external adapters are:
 
 - Vikunja task reads, lists, and task creation;
-- Nextcloud CalDAV reads, work-block creation, and in-place updates;
+- Nextcloud CalDAV reads, fixed-event and work-block creation, and work-block
+  in-place updates;
+- optional Nominatim-compatible physical-place search behind deterministic,
+  provider-neutral candidate selection;
 - optional Waze travel estimates for Daily Brief;
 - optional Home Assistant weather reads for Daily Brief;
 - optional Gemini structured-intent interpretation.
 
 Beacon has no internal database, background worker, automatic rescheduling
 daemon, reminder dispatcher, persistent audit log, or n8n workflow. Daily Brief
-generation and scheduling are request-driven. The local rule interpreter is the
-default; Gemini is optional and is limited to producing validated intent data.
+generation, fixed-event creation, and scheduling are request-driven. The local
+rule interpreter is the default; Gemini is optional and is limited to producing
+validated intent data.

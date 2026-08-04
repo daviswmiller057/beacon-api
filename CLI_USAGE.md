@@ -79,7 +79,17 @@ Send one request and exit:
 ```bash
 python -m app.cli "Buy Liquid IV tomorrow"
 python -m app.cli "Schedule lighting paperwork tomorrow"
+python -m app.cli "AD Players focus call for Holly Street on Monday 8/10 from 10:00-18:00"
+python -m app.cli "Dr Morland Aug 4th at 14:00"
 ```
+
+The final two commands create normal fixed calendar events through `/interact`.
+The `Dr Morland` request has no end or duration, so Beacon deterministically
+creates a one-hour event ending at 15:00 in its configured timezone.
+The CLI does not route or parse it locally; the backend distinguishes the fixed
+commitment from a task or flexible work block, extracts its clean title and raw
+venue, resolves the calendar and optional address, checks duplicates/conflicts,
+and returns the confirmation text.
 
 Call the read endpoints directly:
 
@@ -131,6 +141,11 @@ Created task "Buy Liquid IV".
 Beacon:
 Scheduled "Lighting paperwork" from 2026-08-04T14:00:00-05:00 to 2026-08-04T15:00:00-05:00.
 
+> AD Players focus call for Holly Street on Monday 8/10 from 10:00-18:00
+
+Beacon:
+Created calendar event "Focus call for Holly Street" on Monday, August 10, 2026 from 10:00 AM to 6:00 PM in Theater at A.D. Players at the George Theater, 5420 Westheimer Road, Houston, TX 77056.
+
 > /brief
 
 Beacon:
@@ -141,6 +156,12 @@ You have rehearsal at 2 PM. No schedule conflicts were found.
 ```
 
 Exact wording and action results come from the Beacon backend.
+
+The resolved-address example requires server-side location lookup to be enabled
+and a high-confidence provider result. If lookup is disabled, unavailable, or
+finds no reliable result, the same generic CLI displays Beacon's raw-venue
+fallback warning. If several candidates are too close, it displays the backend's
+clarification list. The CLI never calls a place provider itself.
 
 ## Response presentation
 

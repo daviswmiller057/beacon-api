@@ -13,6 +13,7 @@ See [Architecture](architecture.md), [Scheduling](scheduling.md),
 |---|---|---|---|---|
 | Vikunja | `VikunjaClient` | one task, paged task list | create task | HTTP timeout 15s; typed `VikunjaError`/`VikunjaTaskNotFound` |
 | Nextcloud | `CalDAVService` | calendars, busy intervals, daily events, linked blocks | create/update events | caldav client behavior; typed calendar errors where wrapped |
+| Nominatim-compatible geocoder | `NominatimLocationProvider` behind `LocationResolver` | place candidates | none | configurable timeout; non-fatal raw-location fallback |
 | Gemini | `GeminiInterpreter` | structured intent response | none outside Gemini request | HTTP timeout 20s; typed interpreter errors |
 | Home Assistant | `HomeAssistantClient` | one weather state | none | HTTP timeout 10s; brief warning on failure |
 | Waze | `WazeClient` | route duration/distance | none | library-controlled call; brief warning on failure |
@@ -116,12 +117,16 @@ events with a numeric marker as Beacon work blocks.
 - `find_task_events` searches one destination calendar and returns every exact
   marker match so the scheduler can reject ambiguity.
 - `find_task_event` is a compatibility wrapper that returns only the first match.
+- `find_fixed_events` searches one destination calendar for the same normalized
+  title and exact start/end instants. It excludes events with a numeric Vikunja
+  marker so a task work block cannot masquerade as a fixed-event duplicate.
 
 ### Create
 
 `create_event` rejects `end <= start`, resolves the destination display name,
-and calls `calendar.add_event` with start, end, summary, and description. Beacon's
-scheduler uses title `Work Block — <task title>` and description:
+and calls `calendar.add_event` with start, end, summary, description, and an
+optional location. Fixed commitments use this directly with no task marker.
+Beacon's scheduler uses title `Work Block — <task title>` and description:
 
 ```text
 Scheduled by Beacon
@@ -149,6 +154,57 @@ UID, href, calendar, summary, description, marker, alarms, sequence, and unrelat
 properties are preserved. Disappeared/stale events become
 `CalendarEventNotFoundError`; unsupported/update failures become
 `CalendarEventUpdateError`.
+
+## Location resolution and Nominatim
+
+`CalendarEventService` depends on the `LocationResolver` protocol, not on a
+vendor response. `DeterministicLocationResolver` consumes normalized
+`LocationCandidate` values from a `LocationLookupProvider`. The initial
+`NominatimLocationProvider` is the only component that understands Nominatim
+query parameters or JSON.
+
+The adapter calls:
+
+```http
+GET {BEACON_LOCATION_API_URL}/search
+Accept: application/json
+User-Agent: {BEACON_LOCATION_USER_AGENT}
+```
+
+Parameters request `jsonv2`, address details, name details, deduplication, and at
+most five results. The query combines the raw venue with
+`BEACON_LOCATION_BIAS`, or `BEACON_HOME_LOCATION` when the dedicated bias is
+unset. It uses the configured explicit timeout. HTTP status, timeout, network,
+shape, and JSON failures become `LocationProviderError`; response bodies are not
+included in errors.
+
+The adapter normalizes canonical name, street/city/state/postcode, coordinates,
+provider identifier, and place classification. It does not choose the winning
+place. The deterministic resolver scores exact/name containment, query-token
+coverage, venue-like classification, and regional-address overlap. A result must
+clear both the confidence threshold and the lead over the runner-up. Otherwise
+up to three candidates are returned for clarification.
+
+No-match and provider failure are non-fatal: the raw venue is written to
+CalDAV and the interaction result warns the user. Ambiguity performs no CalDAV
+write. Virtual locations and missing locations never call the provider.
+
+Physical lookup is disabled by default for privacy. Enabling a public Nominatim
+endpoint sends the venue query and geographic bias to that operator. Public
+Nominatim's [official usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+currently caps use at one request per second, requires a valid identifying user
+agent, visible attribution and caching, and says not to submit confidential or
+personal material. Beacon serializes calls to that exact public host at no more
+than one per second, caches up to 256 exact endpoint/query combinations for the
+process lifetime, and includes `© OpenStreetMap contributors` in a resolved
+interaction. A self-hosted Nominatim-compatible URL is supported and is not
+subjected to the public-host throttle. The operator remains responsible for the
+chosen endpoint's current policy and ODbL/attribution obligations.
+
+Beacon has no persistent geocode cache and sends no event description, API
+credential, Vikunja data, or full calendar payload with the lookup. The
+process-local cache disappears on restart and does not coordinate across
+multiple Beacon replicas.
 
 ## Gemini
 

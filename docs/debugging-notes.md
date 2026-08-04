@@ -89,8 +89,8 @@ execution before tracing integration code.
 ## Interaction and Gemini
 
 The rules interpreter is intentionally narrow. A `400` for conversational or
-unsupported wording is expected; use one of the documented create, schedule, or
-brief forms. It never calls Gemini.
+unsupported wording is expected; use one of the documented task, fixed-event,
+schedule, or brief forms. It never calls Gemini.
 
 In Gemini mode, distinguish:
 
@@ -100,9 +100,11 @@ In Gemini mode, distinguish:
 - valid JSON that violates `StructuredIntent`: schema-validation failure;
 - valid `UNKNOWN` intent: successful clarification with no external action.
 
-Gemini receives relative phrases in `time_constraint`; the deterministic planner
-supports only today/tomorrow and morning/afternoon/evening. Unsupported time text
-should return a clarification question, not a guessed slot.
+For tasks, Gemini may preserve relative phrases in `time_constraint`; the
+deterministic planner supports only today/tomorrow and
+morning/afternoon/evening. For fixed events, Gemini receives the request's
+reference date and Beacon timezone and emits concrete event bounds. Unsupported
+task time text should return a clarification question, not a guessed slot.
 
 Task creation requires `VIKUNJA_DEFAULT_PROJECT_ID`. Scheduling by title with no
 match and no date intentionally returns not-found rather than creating an
@@ -169,6 +171,50 @@ the resource and verifies type, marker, UID, and `DTEND` shape.
 
 Calendar lookup plus create/update is not transactional. Concurrent requests can
 race even though the marker prevents many ordinary duplicates.
+
+## Fixed calendar events
+
+Fixed events are ordinary CalDAV events and must not contain a numeric Vikunja
+marker. Diagnose them in this order:
+
+1. Confirm the interpreted intent is `CREATE_CALENDAR_EVENT` and inspect
+   clean `title`, `location_query`, `description`, `start_iso`, and `end_iso`
+   with `--debug` or the HTTP response.
+2. Confirm the start exists. If the request supplied an end, confirm it is later
+   than the start. If it supplied a duration, confirm it is `1..1440` minutes.
+   With neither, Beacon deterministically creates a one-hour event. An invalid
+   explicit end is rejected rather than replaced by this default.
+3. Confirm `BEACON_TIMEZONE` and the UTC offsets, especially across DST.
+4. Confirm the routed `theater`, `school`, or `personal` calendar exists in
+   `BEACON_CALENDARS` and Nextcloud. Missing destinations return `422`; Beacon
+   does not fall back to another calendar.
+5. Check `calendar_event.status`: `EXISTING` means the selected calendar already
+   had the same normalized title and exact start/end, so no create occurred.
+6. Inspect `calendar_event.conflicts` for informational overlaps. Conflicts warn
+   but do not relocate or prevent the fixed event.
+7. Inspect `calendar_event.location_resolution.status`:
+   - `RESOLVED`: selected candidate and canonical address were written;
+   - `AMBIGUOUS`: candidate clarification was returned and no event was written;
+   - `NOT_FOUND`: raw venue was written with an unverified warning;
+   - `UNAVAILABLE`: timeout/network/HTTP/provider failure used raw venue;
+   - `SKIPPED`: virtual, caller-resolved, disabled, or otherwise non-lookup path.
+
+If every physical query is unverified, confirm
+`BEACON_LOCATION_LOOKUP_ENABLED=true`. Then check the configured endpoint,
+timeout, bias, and identifying user agent. Beacon logs a provider/category-safe
+failure reason but does not log complete event descriptions or raw response
+bodies. A `429` means the endpoint's rate policy was reached; event creation
+should still succeed with the raw venue.
+
+If the wrong place wins, use `--debug` to inspect confidence and
+`matching_evidence`, then make the venue query or regional bias more specific.
+Beacon intentionally asks for clarification when the top candidate has no clear
+lead. There is no conversational follow-up state, so resubmit the complete event
+request with the more specific venue.
+
+Duplicate lookup is same-calendar and excludes task work blocks. It is
+best-effort rather than transactional, so truly concurrent identical requests
+can still race.
 
 ## Daily Brief
 

@@ -10,6 +10,8 @@ from app.intake.errors import (
 from app.models import (
     ActionPlan,
     ActionType,
+    CalendarEventCreateStatus,
+    CreateCalendarEventResponse,
     DailyBriefResponse,
     InteractResponse,
     InteractionAction,
@@ -19,6 +21,7 @@ from app.models import (
     VikunjaTask,
 )
 from app.services.daily_brief import DailyBriefService
+from app.services.calendar_events import CalendarEventService
 from app.services.scheduler import SchedulerService
 from app.services.vikunja_client import VikunjaClient
 
@@ -32,10 +35,12 @@ class ActionExecutor:
         vikunja: VikunjaClient,
         scheduler: SchedulerService,
         daily_brief: DailyBriefService,
+        calendar_events: CalendarEventService | None = None,
     ) -> None:
         self.vikunja = vikunja
         self.scheduler = scheduler
         self.daily_brief = daily_brief
+        self.calendar_events = calendar_events or CalendarEventService()
 
     def execute(
         self,
@@ -47,6 +52,7 @@ class ActionExecutor:
         current_task: VikunjaTask | None = None
         brief: DailyBriefResponse | None = None
         scheduled: ScheduleTaskResponse | None = None
+        fixed_event: CreateCalendarEventResponse | None = None
 
         for action in plan.actions:
             if action.action is ActionType.REQUEST_CLARIFICATION:
@@ -65,6 +71,19 @@ class ActionExecutor:
                 brief = self.daily_brief.build(action.deadline)
                 actions_taken.append(self._brief_audit(brief))
                 continue
+            if action.action is ActionType.CREATE_CALENDAR_EVENT:
+                fixed_event = self.calendar_events.create_fixed_event(
+                    title=action.title,
+                    start=action.start_iso,
+                    end=action.end_iso,
+                    duration_minutes=action.duration_minutes,
+                    calendar_category=action.calendar_category,
+                    location_query=action.location_query,
+                    location=action.location,
+                    description=action.description,
+                )
+                actions_taken.append(self._calendar_event_audit(fixed_event))
+                continue
             if action.action is ActionType.CREATE_TASK:
                 current_task, audit = self._create_or_resolve(action, timezone)
                 if audit is not None:
@@ -77,7 +96,13 @@ class ActionExecutor:
             scheduled = self._schedule(current_task, action, now, timezone)
             actions_taken.append(self._schedule_audit(current_task, scheduled))
 
-        result = self._result(brief, scheduled, current_task, timezone)
+        result = self._result(
+            brief,
+            scheduled,
+            current_task,
+            fixed_event,
+            timezone,
+        )
         return InteractResponse(
             result=result,
             intent=plan.intent,
@@ -86,6 +111,7 @@ class ActionExecutor:
             brief=brief,
             schedule=scheduled,
             task=current_task,
+            calendar_event=fixed_event,
         )
 
     def _create_or_resolve(
@@ -180,7 +206,46 @@ class ActionExecutor:
         )
 
     @staticmethod
-    def _result(brief, scheduled, task, timezone: ZoneInfo) -> str:
+    def _calendar_event_audit(
+        response: CreateCalendarEventResponse,
+    ) -> InteractionAction:
+        event = response.event
+        if response.status is CalendarEventCreateStatus.CLARIFICATION:
+            resolution = response.location_resolution
+            return InteractionAction(
+                action="calendar_event_clarification",
+                status="PENDING",
+                target=(resolution.query if resolution else None),
+                details={
+                    "candidates": (
+                        len(resolution.alternatives) if resolution else 0
+                    )
+                },
+            )
+        if event is None:
+            raise InteractionError("Calendar event result is missing its event")
+        return InteractionAction(
+            action="calendar_event_created",
+            status=response.status.value,
+            target=(f"calendar-event:{event.uid}" if event.uid else event.title),
+            details={
+                "calendar": event.calendar,
+                "start_iso": event.start_iso.isoformat(),
+                "end_iso": event.end_iso.isoformat(),
+                "conflicts": len(response.conflicts),
+            },
+        )
+
+    @staticmethod
+    def _result(
+        brief,
+        scheduled,
+        task,
+        fixed_event: CreateCalendarEventResponse | None,
+        timezone: ZoneInfo,
+    ) -> str:
+        if fixed_event is not None:
+            return ActionExecutor._calendar_event_result(fixed_event, timezone)
         if brief is not None:
             return brief.spoken_summary
         if scheduled is not None and task is not None:
@@ -199,6 +264,50 @@ class ActionExecutor:
         if task is not None:
             return f'Created task "{task.title}".'
         raise InteractionError("Action plan produced no result")
+
+    @staticmethod
+    def _calendar_event_result(
+        response: CreateCalendarEventResponse,
+        timezone: ZoneInfo,
+    ) -> str:
+        if response.status is CalendarEventCreateStatus.CLARIFICATION:
+            return response.clarification_question or (
+                "Please provide a more specific venue."
+            )
+        event = response.event
+        if event is None:
+            raise InteractionError("Calendar event result is missing its event")
+        start = event.start_iso.astimezone(timezone)
+        end = event.end_iso.astimezone(timezone)
+        date_text = f"{start:%A, %B} {start.day}, {start.year}"
+        start_text = start.strftime("%I:%M %p").lstrip("0")
+        end_text = end.strftime("%I:%M %p").lstrip("0")
+        prefix = (
+            "Created calendar event"
+            if response.status is CalendarEventCreateStatus.CREATED
+            else "Calendar event already exists:"
+        )
+        result = (
+            f'{prefix} "{event.title}" on {date_text} from '
+            f"{start_text} to {end_text} in {event.calendar.title()}"
+        )
+        if event.location:
+            result += f" at {event.location}"
+        result += "."
+        warnings = list(response.notices)
+        warnings.extend(f"Warning: {warning}" for warning in response.warnings)
+        for conflict in response.conflicts:
+            conflict_start = conflict.start_iso.astimezone(timezone).strftime(
+                "%I:%M %p"
+            ).lstrip("0")
+            conflict_end = conflict.end_iso.astimezone(timezone).strftime(
+                "%I:%M %p"
+            ).lstrip("0")
+            warnings.append(
+                f'Warning: This overlaps with "{conflict.title}" from '
+                f"{conflict_start} to {conflict_end} in {conflict.calendar}."
+            )
+        return "\n".join([result, *warnings])
 
     @staticmethod
     def _schedule_bounds(

@@ -133,6 +133,27 @@ curl -sS http://localhost:8000/interact \
   -d '{"message":"Schedule lighting paperwork tomorrow"}'
 ```
 
+Fixed calendar event example:
+
+```bash
+curl -sS http://localhost:8000/interact \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'X-Beacon-API-Key: replace-with-your-key' \
+  -d '{"message":"AD Players focus call for Holly Street on Monday 8/10 from 10:00-18:00"}'
+```
+
+Start-only fixed event (the backend deterministically creates 14:00–15:00 in
+the configured timezone):
+
+```bash
+curl -sS http://localhost:8000/interact \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'X-Beacon-API-Key: replace-with-your-key' \
+  -d '{"message":"Dr Morland Aug 4th at 14:00"}'
+```
+
 Structured example:
 
 ```json
@@ -152,9 +173,24 @@ Success `200` is `InteractResponse` and contains:
 - the accepted `intent`;
 - the deterministic `plan`;
 - `actions_taken` describing actual execution;
-- an optional typed `task`, `schedule`, or `brief` result.
+- an optional typed `task`, `schedule`, `brief`, or `calendar_event` result.
 
-Successful clarification is also `200`: an `UNKNOWN` or unsupported time
+For a fixed event, `calendar_event.status` is `CREATED`, `EXISTING`, or
+`CLARIFICATION`. `event` contains the clean title, resolved destination, bounds,
+and canonical/raw ICS location. `location_resolution` contains provider-neutral
+status, selected candidate or alternatives, coordinates/evidence when available,
+and no raw vendor payload. `warnings` reports unverified/unavailable lookup;
+`conflicts` reports informational overlaps. A valid start with neither end nor
+duration defaults to one hour. Missing/invalid starts, invalid explicit ends,
+or an unavailable routed calendar return `422` without creating anything.
+
+An ambiguous physical venue is a successful `200` clarification with
+`calendar_event.status=CLARIFICATION`, no event, a `PENDING`
+`calendar_event_clarification` action, and up to three concise candidates. The
+request performs no CalDAV write. The API keeps no conversational state; callers
+resubmit a complete, more specific request.
+
+Other successful clarification is also `200`: an `UNKNOWN` or unsupported time
 constraint produces a question, a `REQUEST_CLARIFICATION` plan, and no external
 mutation.
 
@@ -165,7 +201,7 @@ Common interaction errors:
 | `400` | Unsupported rules-interpreter input or unsupported intent. |
 | `404` | Requested/resolved Vikunja task or calendar event not found. |
 | `409` | Ambiguous task title, completed task, multiple linked events, or no availability. |
-| `422` | Pydantic request error, missing deadline, or invalid scheduling bounds/value. |
+| `422` | Pydantic request error, missing deadline/event bound, unavailable routed calendar, or invalid bounds/value. |
 | `502` | Vikunja/CalDAV/Gemini upstream failure or other mapped interaction failure. |
 | `503` | Interpreter configuration failure discovered while handling the request. Gemini-key absence is normally caught at startup first. |
 

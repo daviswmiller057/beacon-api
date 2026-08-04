@@ -17,6 +17,24 @@ class ActionPlanner:
         self.settings = settings or get_settings()
 
     def plan(self, intent: StructuredIntent, today: date) -> ActionPlan:
+        if intent.intent is IntentType.CREATE_CALENDAR_EVENT:
+            return ActionPlan(
+                intent=intent,
+                actions=[
+                    PlannedAction(
+                        action=ActionType.CREATE_CALENDAR_EVENT,
+                        title=intent.title,
+                        start_iso=intent.start_iso,
+                        end_iso=intent.end_iso,
+                        duration_minutes=intent.duration_minutes,
+                        calendar_category=intent.calendar_category,
+                        location_query=intent.location_query,
+                        location=intent.location,
+                        description=intent.description,
+                    )
+                ],
+            )
+
         relative_date, window_start, window_end, supported = self._time_constraint(
             intent.time_constraint, today
         )
