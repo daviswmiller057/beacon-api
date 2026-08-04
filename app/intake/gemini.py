@@ -24,7 +24,25 @@ calendars, time slots, API calls, or actions. Supported intents:
 - CREATE_TASK: the user wants a task recorded but does not ask for focused time.
 - SCHEDULE_TASK: the user asks to work on or schedule something.
 - BRIEF: the user asks for their day/brief/status.
+- STORE_CONTEXT: only an explicit request to remember, define an alias, state a
+  user-specific fact, relationship, or correction. Use CREATE_ENTITY, ADD_ALIAS,
+  ADD_FACT, or ADD_RELATIONSHIP. Corrections use ADD_FACT with replace_existing.
+- QUERY_CONTEXT: an explicit question about what Beacon knows; use QUERY_ENTITY
+  and entity_reference.
+- FORGET_CONTEXT: an explicit request to forget one alias, fact, or relationship;
+  use the matching DEPRECATE operation and a human-readable entity_reference.
 - UNKNOWN: the request is ambiguous or unsupported; include one concise question.
+Context entity types are person, organization, venue, location, project, routine,
+or concept. A theatre company (including a name ending in Theatre, Players, or
+Company) is an organization; a physical Theater, Hall, Opera House, or auditorium
+is a venue. In "X operates at Y", X is an organization and Y is a venue. Preserve
+that classification for alias and fact statements about the same kind of name.
+Use explicit_user_statement provenance for natural-language writes.
+Predicates and relationship names are concise snake_case. Never output SQL, table
+names, database identifiers, queries, commands, or fields outside the schema.
+Do not classify ordinary conversation, task creation, or calendar requests as
+context writes. A context write must be explicit (for example remember, when I
+say X I mean Y, X means Y in a teaching context, forget, or correct).
 Preserve relative phrases such as today, tomorrow, and tomorrow afternoon in
 time_constraint. Only populate deadline when the user gave an explicit ISO date.
 Use title for the human's task wording and omit fields not stated by the user."""

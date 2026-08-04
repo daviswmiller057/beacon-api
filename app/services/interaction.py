@@ -3,6 +3,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.config import Settings, get_settings
+from app.context.domain import Provenance
+from app.context.service import ContextRegistryService
 from app.intake.errors import (
     AmbiguousTaskError,
     InteractionError,
@@ -50,7 +52,15 @@ class InteractionService:
         timezone = ZoneInfo(self.settings.beacon_timezone)
         now = self.clock(timezone).astimezone(timezone)
         intent = request.intent or self.interpreter.interpret(request.message or "")
+        if request.message is not None and intent.intent.value == "STORE_CONTEXT":
+            intent = intent.model_copy(
+                update={"provenance": Provenance.EXPLICIT_USER_STATEMENT}
+            )
         plan = self.planner.plan(intent, now.date())
+        if intent.intent.value.endswith("_CONTEXT") and self.executor.context_registry is None:
+            self.executor.context_registry = ContextRegistryService.from_path(
+                self.settings.context_database_path
+            )
         return self.executor.execute(plan, now, timezone)
 
     def _build_interpreter(self) -> IntentInterpreter:

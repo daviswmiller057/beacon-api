@@ -4,6 +4,14 @@ from typing import Annotated, Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
+from app.context.domain import (
+    ContextMutationResult,
+    ContextOperation,
+    EntityContextResult,
+    EntityInput,
+    Provenance,
+)
+
 
 class AvailabilityRequest(BaseModel):
     earliest_iso: datetime
@@ -197,6 +205,9 @@ class IntentType(StrEnum):
     BRIEF = "BRIEF"
     CREATE_TASK = "CREATE_TASK"
     SCHEDULE_TASK = "SCHEDULE_TASK"
+    STORE_CONTEXT = "STORE_CONTEXT"
+    QUERY_CONTEXT = "QUERY_CONTEXT"
+    FORGET_CONTEXT = "FORGET_CONTEXT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -207,7 +218,7 @@ class StructuredIntent(BaseModel):
     responses use intent-language rather than execution-language.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     intent: IntentType = Field(validation_alias=AliasChoices("intent", "action"))
     task_id: int | None = None
@@ -224,6 +235,20 @@ class StructuredIntent(BaseModel):
     clarification_question: Annotated[
         str, Field(min_length=1, max_length=500)
     ] | None = None
+    operation: ContextOperation | None = None
+    entity: EntityInput | None = None
+    source_entity: EntityInput | None = None
+    target_entity: EntityInput | None = None
+    entity_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    target_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    alias: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    predicate: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    value: Any | None = None
+    value_reference: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+    relationship: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    provenance: Provenance | None = None
+    source_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    replace_existing: bool = False
     # Compatibility for existing callers. New interpreters never emit it.
     create_event: bool = Field(default=True, exclude=True)
 
@@ -239,6 +264,50 @@ class StructuredIntent(BaseModel):
             raise ValueError("CREATE_TASK requires title")
         if self.intent is IntentType.UNKNOWN and not self.clarification_question:
             raise ValueError("UNKNOWN requires clarification_question")
+        if self.intent is IntentType.QUERY_CONTEXT:
+            if self.operation not in (None, ContextOperation.QUERY_ENTITY):
+                raise ValueError("QUERY_CONTEXT only supports QUERY_ENTITY")
+            if not self.entity_reference:
+                raise ValueError("QUERY_CONTEXT requires entity_reference")
+            self.operation = ContextOperation.QUERY_ENTITY
+        if self.intent is IntentType.STORE_CONTEXT:
+            if self.operation not in {
+                ContextOperation.CREATE_ENTITY,
+                ContextOperation.ADD_ALIAS,
+                ContextOperation.ADD_FACT,
+                ContextOperation.ADD_RELATIONSHIP,
+            }:
+                raise ValueError("STORE_CONTEXT requires a supported store operation")
+            if self.operation is ContextOperation.CREATE_ENTITY and not self.entity:
+                raise ValueError("CREATE_ENTITY requires entity")
+            if self.operation is ContextOperation.ADD_ALIAS and not (self.entity and self.alias):
+                raise ValueError("ADD_ALIAS requires entity and alias")
+            if self.operation is ContextOperation.ADD_FACT and not (
+                self.entity and self.predicate and self.value is not None
+            ):
+                raise ValueError("ADD_FACT requires entity, predicate, and value")
+            if self.operation is ContextOperation.ADD_RELATIONSHIP and not (
+                self.source_entity and self.relationship and self.target_entity
+            ):
+                raise ValueError(
+                    "ADD_RELATIONSHIP requires source_entity, relationship, and target_entity"
+                )
+            self.provenance = self.provenance or Provenance.EXPLICIT_USER_STATEMENT
+        if self.intent is IntentType.FORGET_CONTEXT:
+            if self.operation not in {
+                ContextOperation.DEPRECATE_ALIAS,
+                ContextOperation.DEPRECATE_FACT,
+                ContextOperation.DEPRECATE_RELATIONSHIP,
+            }:
+                raise ValueError("FORGET_CONTEXT requires a supported deprecation operation")
+            if not self.entity_reference:
+                raise ValueError("FORGET_CONTEXT requires entity_reference")
+            if self.operation is ContextOperation.DEPRECATE_ALIAS and not self.alias:
+                raise ValueError("DEPRECATE_ALIAS requires alias")
+            if self.operation is ContextOperation.DEPRECATE_FACT and not self.predicate:
+                raise ValueError("DEPRECATE_FACT requires predicate")
+            if self.operation is ContextOperation.DEPRECATE_RELATIONSHIP and not self.relationship:
+                raise ValueError("DEPRECATE_RELATIONSHIP requires relationship")
         return self
 
     @property
@@ -260,6 +329,8 @@ class ActionType(StrEnum):
     SCHEDULE_WORK_BLOCK = "SCHEDULE_WORK_BLOCK"
     GENERATE_BRIEF = "GENERATE_BRIEF"
     REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
+    QUERY_CONTEXT = "QUERY_CONTEXT"
+    MUTATE_CONTEXT = "MUTATE_CONTEXT"
 
 
 class PlannedAction(BaseModel):
@@ -273,6 +344,20 @@ class PlannedAction(BaseModel):
     create_event: bool = True
     reuse_existing: bool = False
     question: str | None = None
+    context_operation: ContextOperation | None = None
+    entity: EntityInput | None = None
+    source_entity: EntityInput | None = None
+    target_entity: EntityInput | None = None
+    entity_reference: str | None = None
+    target_reference: str | None = None
+    alias: str | None = None
+    predicate: str | None = None
+    value: Any | None = None
+    value_reference: str | None = None
+    relationship: str | None = None
+    provenance: Provenance | None = None
+    source_reference: str | None = None
+    replace_existing: bool = False
 
 
 class ActionPlan(BaseModel):
@@ -306,6 +391,7 @@ class InteractResponse(BaseModel):
     brief: DailyBriefResponse | None = None
     schedule: ScheduleTaskResponse | None = None
     task: VikunjaTask | None = None
+    context: EntityContextResult | ContextMutationResult | None = None
 
 
 class ServiceStatusResponse(BaseModel):

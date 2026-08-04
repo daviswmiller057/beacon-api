@@ -47,6 +47,40 @@ class ActionPlanner:
                     )
                 ],
             )
+        if intent.intent is IntentType.QUERY_CONTEXT:
+            return ActionPlan(
+                intent=intent,
+                actions=[
+                    PlannedAction(
+                        action=ActionType.QUERY_CONTEXT,
+                        context_operation=intent.operation,
+                        entity_reference=intent.entity_reference,
+                    )
+                ],
+            )
+        if intent.intent in (IntentType.STORE_CONTEXT, IntentType.FORGET_CONTEXT):
+            return ActionPlan(
+                intent=intent,
+                actions=[
+                    PlannedAction(
+                        action=ActionType.MUTATE_CONTEXT,
+                        context_operation=intent.operation,
+                        entity=intent.entity,
+                        source_entity=intent.source_entity,
+                        target_entity=intent.target_entity,
+                        entity_reference=intent.entity_reference,
+                        target_reference=intent.target_reference,
+                        alias=intent.alias,
+                        predicate=intent.predicate,
+                        value=intent.value,
+                        value_reference=intent.value_reference,
+                        relationship=intent.relationship,
+                        provenance=intent.provenance,
+                        source_reference=intent.source_reference,
+                        replace_existing=intent.replace_existing,
+                    )
+                ],
+            )
         if intent.intent is IntentType.BRIEF:
             return ActionPlan(
                 intent=intent,

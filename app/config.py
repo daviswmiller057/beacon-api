@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash"
     gemini_api_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    context_database_path: Annotated[str, Field(min_length=1)] = "./data/beacon.db"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

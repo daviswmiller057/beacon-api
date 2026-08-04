@@ -28,6 +28,13 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      CONTEXT_DATABASE_PATH: /data/beacon.db
+    volumes:
+      - beacon_data:/data
     ports:
       - "8000:8000"
     stop_grace_period: 20s
+
+volumes:
+  beacon_data:
+    name: beacon_data

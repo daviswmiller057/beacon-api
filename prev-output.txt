@@ -1,0 +1,250 @@
+Implemented Phase 1 of Beacon’s persistent Context Registry end to end.
+
+## Repository state
+
+- Branch remained `context` throughout.
+- Initial Git status was clean: `## context`.
+- Pre-existing modified/untracked files: none.
+- Final changes remain uncommitted.
+- No branch changes, commits, pushes, merges, rebases, resets, remote changes, tags, secret changes, volume deletion, or production external writes occurred.
+
+## Architecture and persistence
+
+The existing path was preserved:
+
+```text
+POST /interact or CLI
+→ InteractionService
+→ IntentInterpreter
+→ StructuredIntent
+→ ActionPlanner
+→ ActionExecutor
+→ Beacon services
+```
+
+Context now follows:
+
+```text
+Natural language / structured intent
+→ rules or Gemini interpreter
+→ validated provider-neutral context intent
+→ deterministic planner
+→ executor
+→ ContextRegistryService
+→ ContextRepository
+→ SQLite
+```
+
+Beacon previously had no application database. Phase 1 uses SQLite because the current deployment is a single API service and has no PostgreSQL dependencies or migration framework.
+
+- Local default: `./data/beacon.db`
+- Container path: `/data/beacon.db`
+- Named volume: `beacon_data`
+- Mount: `beacon_data:/data`
+- Journal mode: WAL
+- Foreign keys enabled
+- Busy timeout: 10 seconds
+- Mutations use `BEGIN IMMEDIATE` transactions
+
+`docker compose down` removes the container and network but retains `beacon_data`. Rebuilds and forced recreation do not include or overwrite `/data`.
+
+## Migration
+
+Added additive migration 001:
+
+- Creates entities, aliases, facts, and relationships.
+- Creates normalization and relationship indexes.
+- Records applied versions in `schema_migrations`.
+- Contains no seeds, truncation, or startup recreation.
+- Is idempotently applied during FastAPI startup.
+- Includes a development/test downgrade.
+
+The isolated sequence `upgrade → downgrade → upgrade` passed with schema version `[1]` and zero seeded entity rows.
+
+## Registry capabilities
+
+Implemented:
+
+- Entity types: person, organization, venue, location, project, routine, concept.
+- Stable UUID identifiers and timestamps.
+- Case-insensitive, punctuation-aware centralized normalization.
+- Dotted-initial normalization such as `T.S.T.` → `tst`.
+- Exact canonical-name resolution before exact active-alias resolution.
+- Deterministic resolved, not-found, and ambiguous results.
+- Idempotent entity, alias, fact, and relationship creation.
+- Typed JSON fact values and free-form validated predicates.
+- Incoming and outgoing relationship queries.
+- Provenance values: `explicit_user_statement`, `system_seed`, and `model_inference`.
+- Nullable source references.
+- Soft deprecation for aliases, facts, and relationships.
+- Explicit correction through replacement of active facts.
+- Conflict rollback, including aliases that already belong to another entity.
+- Safe narrowing of destructive operations only when predicate or relationship selectors identify exactly one record.
+- Broad or genuinely ambiguous destructive requests modify nothing.
+
+Natural-language writes are deterministically assigned `explicit_user_statement`, even if a model proposes another provenance.
+
+## Intake changes
+
+Added provider-neutral intents:
+
+- `STORE_CONTEXT`
+- `QUERY_CONTEXT`
+- `FORGET_CONTEXT`
+
+Added operations:
+
+- `CREATE_ENTITY`
+- `ADD_ALIAS`
+- `ADD_FACT`
+- `ADD_RELATIONSHIP`
+- `QUERY_ENTITY`
+- `DEPRECATE_ALIAS`
+- `DEPRECATE_FACT`
+- `DEPRECATE_RELATIONSHIP`
+
+The rules interpreter supports representative explicit alias, fact, relationship, query, correction, and forget language. Existing task, scheduling, brief, and unknown intents remain intact.
+
+Gemini’s structured-output contract documents the context operations and entity types, distinguishes theatre companies from physical venues, rejects SQL/table commands/database identifiers/extra fields, performs no storage access, and fails closed on malformed output.
+
+## Files created
+
+- `app/context/__init__.py`
+- `app/context/database.py`
+- `app/context/domain.py`
+- `app/context/normalization.py`
+- `app/context/repository.py`
+- `app/context/service.py`
+- `app/context/migrations/001_context_registry.sql`
+- `app/context/migrations/001_context_registry.down.sql`
+- `app/context/migrations/__init__.py`
+- `docs/context-registry.md`
+- `tests/test_context_registry.py`
+
+## Files modified
+
+- `.env.example`
+- `.gitignore`
+- `INTAKE_ARCHITECTURE.md`
+- `README.md`
+- `app/config.py`
+- `app/intake/executor.py`
+- `app/intake/gemini.py`
+- `app/intake/planner.py`
+- `app/intake/rules.py`
+- `app/main.py`
+- `app/models.py`
+- `app/services/interaction.py`
+- `docker-compose.yml`
+- `docs/README.md`
+- `tests/conftest.py`
+
+## Automated validation
+
+Final commands and results:
+
+```bash
+.venv/bin/python -m compileall -q app tests
+```
+
+Passed.
+
+```bash
+git diff --check
+```
+
+Passed.
+
+```bash
+.venv/bin/python -m pytest tests/test_context_registry.py -q
+```
+
+Passed: 25 tests.
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Passed: 59 tests.
+
+Tests cover reopened database sessions, all domain records, normalization, alias conflicts, ambiguity, provenance, timestamps, idempotency, corrections, soft deletion, incoming/outgoing relationships, rules interpretation, provider-output rejection, planning, execution, normal intake, and migration cycling.
+
+No formatter, linter, or static type checker is configured or installed in the repository, so no applicable project command existed for those categories.
+
+Compose validation resolved to:
+
+```text
+context_path: /data/beacon.db
+volume_name: beacon_data
+mount: beacon_data → /data
+```
+
+No secrets were printed.
+
+## Docker persistence verification
+
+Synthetic verification context:
+
+- Alias: `BCP`
+- Entity: `Beacon Context Players`
+- Venue: `Durable Example Hall`
+- Fact: `note = synthetic persistence test`
+- Stable entity ID: `6bfe90e2-715a-4789-b067-c12cf290642d`
+
+It was written and queried through `POST /interact`.
+
+### Restart
+
+`docker compose restart` passed. Alias, fact, relationship, and the same entity ID remained.
+
+### Down/up
+
+`docker compose down` followed by `docker compose up -d` passed. The container was deleted and recreated; all context remained.
+
+### Image rebuild
+
+`docker compose up -d --build` passed. All context remained after rebuilding the application image.
+
+### Forced recreation
+
+`docker compose up -d --force-recreate` passed. All context remained after forced container replacement.
+
+The final rebuilt container is healthy.
+
+## Cleanup
+
+The synthetic fact, relationship, and alias were specifically soft-deprecated through `/interact`. Earlier synthetic variants used while diagnosing live Gemini type consistency were also individually deprecated.
+
+Final database verification:
+
+```text
+active_aliases: 0
+active_facts: 0
+active_relationships: 0
+```
+
+A query for `Beacon Context Players` returns the retained Phase 1 entity shell with zero active details. No database, table, volume, or unrelated record was deleted.
+
+One natural-language relationship-cleanup attempt received a safe HTTP 502 from malformed live provider output. The same specific cleanup was completed through Beacon’s supported structured `/interact` boundary. Offline tests verify the natural-language relationship-forget parser without Gemini or network access.
+
+## Documentation and limitations
+
+The new Context Registry guide documents storage, backups, migrations, privacy, normalization, resolution, explicit learning, safe forgetting, Docker persistence, and why `docker compose down -v` deletes durable data.
+
+Intentionally excluded:
+
+- Passive conversation learning
+- Task/calendar extraction
+- Automatic entity merging
+- Fuzzy matching or embeddings
+- Vector databases
+- Contacts or geocoding
+- Context-aware scheduling
+- Confidence decay
+- Pattern learning
+- Automatic conflict reconciliation
+- GUI/dashboard work
+- External integration writes
+
+Recommended Phase 2 work is passive-learning review workflows, richer correction history and provenance weighting, context injection into scheduling, semantic retrieval where justified, and deterministic conflict-reconciliation policy.
+

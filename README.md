@@ -10,6 +10,7 @@ Implemented today:
 - public health check and API-key-protected business endpoints;
 - one top-level interaction endpoint for natural-language or pre-structured intent;
 - provider-neutral intake with Gemini structured output and deterministic action plans;
+- a persistent Context Registry for explicitly taught aliases, facts, and relationships;
 - Vikunja task creation through deterministic intake execution;
 - a dependency-free interactive and one-shot terminal client;
 - top-level deterministic status and Daily Brief endpoints for automations;
@@ -38,6 +39,13 @@ Natural-language intake defaults to the offline rule interpreter. For Gemini,
 set `BEACON_INTERPRETER=gemini`, `GEMINI_API_KEY`, and optionally
 `GEMINI_MODEL`. Set `VIKUNJA_DEFAULT_PROJECT_ID` when intake may create tasks.
 See [Intake Architecture](INTAKE_ARCHITECTURE.md).
+
+Explicit context taught through `/interact` is stored in SQLite. Compose mounts
+`/data/beacon.db` from the persistent `beacon_data` named volume, so ordinary
+restarts, rebuilds, down/up cycles, and container recreation retain it. See
+[Context Registry](docs/context-registry.md) for migration, backup, privacy, and
+safe-forgetting details. Never use `docker compose down -v` when that data
+should be preserved.
 
 For the intended always-on deployment:
 

@@ -11,6 +11,8 @@ os.environ.setdefault("NEXTCLOUD_USERNAME", "test")
 os.environ.setdefault("NEXTCLOUD_APP_PASSWORD", "test")
 os.environ.setdefault("VIKUNJA_API_URL", "https://example.invalid/api/v1")
 os.environ.setdefault("VIKUNJA_API_TOKEN", "test")
+os.environ.setdefault("BEACON_INTERPRETER", "rules")
+os.environ.setdefault("CONTEXT_DATABASE_PATH", "/tmp/beacon-test-context.db")
 
 
 @pytest.fixture(autouse=True)

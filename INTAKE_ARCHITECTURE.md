@@ -14,6 +14,8 @@ flowchart LR
     E --> V[VikunjaClient]
     E --> S[SchedulerService]
     E --> D[DailyBriefService]
+    E --> CR[ContextRegistryService]
+    CR --> DB[(Persistent SQLite)]
     S --> A[Availability engine]
     S --> C[Nextcloud CalDAV]
     V --> VS[Vikunja]
@@ -28,13 +30,15 @@ flowchart LR
   never receives service clients.
 - `RuleBasedIntentInterpreter` is the offline/default narrow interpreter. It
   keeps local development and existing automations useful without an AI key.
-- `StructuredIntent` describes the user's desired outcome: `CREATE_TASK`,
-  `SCHEDULE_TASK`, `BRIEF`, or `UNKNOWN`. Its entity fields are human concepts
+- `StructuredIntent` describes the user's desired outcome, including
+  `STORE_CONTEXT`, `QUERY_CONTEXT`, and `FORGET_CONTEXT` alongside the existing
+  task, scheduling, brief, and unknown intents. Its fields are human concepts
   such as title, deadline, time constraint, and requested duration.
 - `ActionPlanner` owns deterministic Beacon policy. It resolves supported
   relative-day constraints and turns intent into an ordered `ActionPlan`.
 - `ActionExecutor` performs only the operations authorized by that plan. It
-  coordinates Vikunja, the existing scheduler, and the Daily Brief service.
+  coordinates Vikunja, the existing scheduler, the Daily Brief service, and the
+  provider-neutral Context Registry service.
 - `SchedulerService` remains the sole owner of availability ranking, calendar
   selection, duplicate prevention, and work-block create/update decisions.
 - Vikunja and Nextcloud remain the systems of record.
