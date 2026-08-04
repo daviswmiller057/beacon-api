@@ -95,6 +95,7 @@ The planner is synchronous, deterministic, and free of network or AI calls:
 | `CREATE_TASK` | Create a Vikunja task |
 | `SCHEDULE_TASK` with title | Reuse one safe match or create a task; schedule it |
 | `SCHEDULE_TASK` with task ID | Fetch/schedule that task |
+| `CREATE_CALENDAR_EVENTS` | Expand one validated inclusive daily range into atomic fixed-time calendar actions |
 | `BRIEF` | Generate the existing read-only Daily Brief |
 | `UNKNOWN` | Return the interpreter's clarification question |
 

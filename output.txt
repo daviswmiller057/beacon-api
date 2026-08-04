@@ -1,1 +1,71 @@
-Copied the Context Registry implementation report from two prompts ago into prev-output.txt.
+Implemented bounded daily calendar-event ranges directly on `main`.
+
+Root cause
+
+Beacon could only retain the supplied range as an opaque `time_constraint`. The deterministic planner only understood today/tomorrow and broad dayparts, so it returned clarification instead of producing fixed event actions.
+
+Architecture used
+
+The existing boundary remains intact:
+
+`POST /interact` or CLI → `InteractionService` → interpreter → validated `StructuredIntent` → `ActionPlanner` → `ActionExecutor` → `SchedulerService` → existing CalDAV service.
+
+The new `CREATE_CALENDAR_EVENTS` intent contains a typed `daily_event_range` with inclusive start/end dates, daily start/end times, and `repeat_daily=true`. Gemini and the offline rules interpreter emit the same provider-neutral structure. Exact fixed-time events are intentionally separate from Vikunja work-block scheduling.
+
+Deterministic planning and execution
+
+- The planner expands the complete inclusive range before execution.
+- The example produces five independent `CREATE_CALENDAR_EVENT` actions for August 17–21, each 09:00–17:00 in `America/Chicago`.
+- Title, description, destination calendar, and source reference are copied to every action.
+- Each action contains timezone-aware start/end datetimes.
+- Single-day ranges produce one action through the same path.
+- Reversed dates and end times at or before start times fail validation.
+- Ranges above `BEACON_MAX_DAILY_RANGE_OCCURRENCES` fail before execution; the conservative default is 31.
+- The executor preflights all calendar actions before any write.
+- Each action calls `SchedulerService.create_calendar_event`, which delegates to the existing CalDAV creation method. No RRULE is generated.
+- Batch responses report `COMPLETE`, `PARTIAL`, or `FAILED`, action/completed/failed counts, and per-action event or error details.
+- External failures do not trigger compensating deletes; remaining independent actions are attempted and the batch cannot be reported as complete.
+
+Files changed
+
+- `.env.example`
+- `INTAKE_ARCHITECTURE.md`
+- `app/config.py`
+- `app/intake/executor.py`
+- `app/intake/gemini.py`
+- `app/intake/interpreter.py`
+- `app/intake/planner.py`
+- `app/intake/rules.py`
+- `app/models.py`
+- `app/services/interaction.py`
+- `app/services/scheduler.py`
+- `docker-compose.yml`
+- `docs/data-models.md`
+- `docs/development.md`
+- `docs/interaction.md`
+- `tests/test_daily_calendar_range.py` (new)
+- `output.txt` (latest-report mirror requested by the user)
+
+Verification
+
+- Focused new tests: `10 passed in 0.36s`.
+- Targeted interpreter, planner, executor, calendar, interaction, and CLI suite: 66 tests, exit status 0.
+- Complete suite: 115 tests collected, exit status 0.
+- `.venv/bin/python -m compileall -q app tests`: passed.
+- `git diff --check`: passed.
+- `docker compose config --quiet`: passed without printing secrets.
+- Planning-only verification produced exactly five actions at `2026-08-17T09:00:00-05:00` through `2026-08-21T17:00:00-05:00`, with no opaque time constraint and no external calls.
+- No formatter, linter, or type checker is configured or installed, so there was no applicable repository command for those checks.
+
+Assumptions and limitations
+
+- An exact titled date/time request is a direct calendar-event request, not a Vikunja task or availability-ranked work block.
+- Overnight events remain unsupported.
+- Only bounded daily repetition is implemented; there is no open-ended, weekly, monthly, yearly, or CalDAV recurrence support.
+- No container rebuild was necessary because planning and all execution verification used fakes; Compose configuration validation passed.
+
+Git and safety
+
+Initial status was clean on `main`, already one commit ahead of `origin/main`. The branch remained `main`. Final changes are uncommitted modifications plus the new test file.
+
+No commits, pushes, branch creation, branch changes, merges, rebases, resets, stashes, destructive Git operations, remote changes, secret changes, volume deletion, or production Vikunja/Nextcloud/calendar writes occurred.

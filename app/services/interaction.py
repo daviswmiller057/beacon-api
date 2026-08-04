@@ -51,7 +51,9 @@ class InteractionService:
     def interact(self, request: InteractRequest) -> InteractResponse:
         timezone = ZoneInfo(self.settings.beacon_timezone)
         now = self.clock(timezone).astimezone(timezone)
-        intent = request.intent or self.interpreter.interpret(request.message or "")
+        intent = request.intent or self.interpreter.interpret(
+            request.message or "", now.date()
+        )
         if request.message is not None and intent.intent.value == "STORE_CONTEXT":
             intent = intent.model_copy(
                 update={"provenance": Provenance.EXPLICIT_USER_STATEMENT}

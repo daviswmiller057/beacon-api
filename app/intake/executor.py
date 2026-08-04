@@ -19,6 +19,11 @@ from app.intake.errors import (
 from app.models import (
     ActionPlan,
     ActionType,
+    CalendarActionResult,
+    CalendarActionStatus,
+    CalendarBatchResult,
+    CalendarBatchStatus,
+    CalendarEventCreateRequest,
     DailyBriefResponse,
     InteractResponse,
     InteractionAction,
@@ -28,7 +33,7 @@ from app.models import (
     VikunjaTask,
 )
 from app.services.daily_brief import DailyBriefService
-from app.services.scheduler import SchedulerService
+from app.services.scheduler import CalendarEventCreationError, SchedulerService
 from app.services.vikunja_client import VikunjaClient
 
 
@@ -54,11 +59,13 @@ class ActionExecutor:
         now: datetime,
         timezone: ZoneInfo,
     ) -> InteractResponse:
+        self._validate_calendar_actions(plan)
         actions_taken: list[InteractionAction] = []
         current_task: VikunjaTask | None = None
         brief: DailyBriefResponse | None = None
         scheduled: ScheduleTaskResponse | None = None
         context_result: EntityContextResult | ContextMutationResult | None = None
+        calendar_results: list[CalendarActionResult] = []
 
         for action in plan.actions:
             if action.action is ActionType.REQUEST_CLARIFICATION:
@@ -97,6 +104,13 @@ class ActionExecutor:
                     )
                 )
                 continue
+            if action.action is ActionType.CREATE_CALENDAR_EVENT:
+                calendar_result, audit = self._create_calendar_event(
+                    action, len(calendar_results) + 1
+                )
+                calendar_results.append(calendar_result)
+                actions_taken.append(audit)
+                continue
             if action.action is ActionType.CREATE_TASK:
                 current_task, audit = self._create_or_resolve(action, timezone)
                 if audit is not None:
@@ -109,7 +123,15 @@ class ActionExecutor:
             scheduled = self._schedule(current_task, action, now, timezone)
             actions_taken.append(self._schedule_audit(current_task, scheduled))
 
-        result = self._result(brief, scheduled, current_task, timezone, context_result)
+        calendar_batch = self._calendar_batch(calendar_results)
+        result = self._result(
+            brief,
+            scheduled,
+            current_task,
+            timezone,
+            context_result,
+            calendar_batch,
+        )
         return InteractResponse(
             result=result,
             intent=plan.intent,
@@ -119,6 +141,95 @@ class ActionExecutor:
             schedule=scheduled,
             task=current_task,
             context=context_result,
+            calendar_batch=calendar_batch,
+        )
+
+    def _create_calendar_event(
+        self, action: PlannedAction, index: int
+    ) -> tuple[CalendarActionResult, InteractionAction]:
+        request = self._calendar_request(action)
+        try:
+            event = self.scheduler.create_calendar_event(request)
+        except CalendarEventCreationError as exc:
+            result = CalendarActionResult(
+                index=index,
+                status=CalendarActionStatus.FAILED,
+                start_iso=request.start_iso,
+                end_iso=request.end_iso,
+                error_code="calendar_event_creation_failed",
+                error=str(exc),
+            )
+            return result, InteractionAction(
+                action="calendar_event_created",
+                status="FAILED",
+                target=request.start_iso.date().isoformat(),
+                details={
+                    "start_iso": request.start_iso.isoformat(),
+                    "end_iso": request.end_iso.isoformat(),
+                    "error_code": result.error_code,
+                    "error": result.error,
+                },
+            )
+        result = CalendarActionResult(
+            index=index,
+            status=CalendarActionStatus.CREATED,
+            start_iso=request.start_iso,
+            end_iso=request.end_iso,
+            event=event,
+        )
+        return result, InteractionAction(
+            action="calendar_event_created",
+            status="CREATED",
+            target=event.uid or request.start_iso.date().isoformat(),
+            details={
+                "start_iso": request.start_iso.isoformat(),
+                "end_iso": request.end_iso.isoformat(),
+                "calendar": event.calendar,
+            },
+        )
+
+    @classmethod
+    def _validate_calendar_actions(cls, plan: ActionPlan) -> None:
+        for action in plan.actions:
+            if action.action is ActionType.CREATE_CALENDAR_EVENT:
+                cls._calendar_request(action)
+
+    @staticmethod
+    def _calendar_request(action: PlannedAction) -> CalendarEventCreateRequest:
+        if not action.title or action.start_iso is None or action.end_iso is None:
+            raise InteractionError("Calendar event action is incomplete")
+        return CalendarEventCreateRequest(
+            title=action.title,
+            description=action.description,
+            calendar_name=action.calendar_name,
+            start_iso=action.start_iso,
+            end_iso=action.end_iso,
+            source_reference=action.source_reference,
+        )
+
+    @staticmethod
+    def _calendar_batch(
+        results: list[CalendarActionResult],
+    ) -> CalendarBatchResult | None:
+        if not results:
+            return None
+        completed = sum(
+            item.status is CalendarActionStatus.CREATED for item in results
+        )
+        failed = len(results) - completed
+        status = (
+            CalendarBatchStatus.COMPLETE
+            if failed == 0
+            else CalendarBatchStatus.FAILED
+            if completed == 0
+            else CalendarBatchStatus.PARTIAL
+        )
+        return CalendarBatchResult(
+            status=status,
+            action_count=len(results),
+            completed_count=completed,
+            failed_count=failed,
+            results=results,
         )
 
     def _context_service(self) -> ContextRegistryService:
@@ -261,7 +372,19 @@ class ActionExecutor:
         )
 
     @staticmethod
-    def _result(brief, scheduled, task, timezone: ZoneInfo, context_result=None) -> str:
+    def _result(
+        brief,
+        scheduled,
+        task,
+        timezone: ZoneInfo,
+        context_result=None,
+        calendar_batch: CalendarBatchResult | None = None,
+    ) -> str:
+        if calendar_batch is not None:
+            return (
+                f"calendar_batch_{calendar_batch.status.value.casefold()}:"
+                f"{calendar_batch.completed_count}/{calendar_batch.action_count}"
+            )
         if isinstance(context_result, EntityContextResult):
             if context_result.status is ResolutionStatus.NOT_FOUND:
                 return "Beacon has no context for that entity."

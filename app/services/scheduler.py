@@ -6,6 +6,8 @@ from app.models import (
     AvailabilityRequest,
     AvailabilityOption,
     AvailabilityResponse,
+    CalendarEventCreateRequest,
+    CalendarEventResult,
     ScheduleStatus,
     ScheduleTaskRequest,
     ScheduleTaskResponse,
@@ -35,6 +37,10 @@ class MultipleTaskEventsError(SchedulingError):
     pass
 
 
+class CalendarEventCreationError(SchedulingError):
+    pass
+
+
 class SchedulerService:
     def __init__(
         self,
@@ -43,6 +49,27 @@ class SchedulerService:
     ) -> None:
         self.settings = settings or get_settings()
         self.caldav = caldav or CalDAVService()
+
+    def create_calendar_event(
+        self, request: CalendarEventCreateRequest
+    ) -> CalendarEventResult:
+        calendar_name = (
+            request.calendar_name or self.settings.beacon_schedule_calendar
+        )
+        description = request.description
+        if request.source_reference:
+            marker = f"Beacon source reference: {request.source_reference}"
+            description = f"{description}\n\n{marker}" if description else marker
+        try:
+            return self.caldav.create_event(
+                calendar_name=calendar_name,
+                title=request.title,
+                description=description,
+                start=request.start_iso,
+                end=request.end_iso,
+            )
+        except Exception as exc:
+            raise CalendarEventCreationError(str(exc)) from exc
 
     def _resolve_bounds(
         self,

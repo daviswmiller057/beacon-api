@@ -16,6 +16,21 @@ class RuleBasedIntentInterpreter:
         re.IGNORECASE,
     )
     _task_id = re.compile(r"(?:\btask\s+|#)(\d+)\b", re.IGNORECASE)
+    _month = (
+        r"January|February|March|April|May|June|July|August|"
+        r"September|October|November|December"
+    )
+    _daily_event_range = re.compile(
+        rf"^(?:please\s+)?(?:schedule\s+|add\s+|create\s+)?"
+        rf"(?P<title>.+?)\s+(?P<start_month>{_month})\s+"
+        rf"(?P<start_day>\d{{1,2}})"
+        rf"(?:\s+through\s+(?:(?P<end_month>{_month})\s+)?"
+        rf"(?P<end_day>\d{{1,2}}))?,\s*(?P<year>\d{{4}}),?\s+"
+        rf"from\s+(?P<start_time>\d{{1,2}}(?::\d{{2}})?\s*[AP]M)\s+"
+        rf"to\s+(?P<end_time>\d{{1,2}}(?::\d{{2}})?\s*[AP]M)"
+        rf"(?:\s+each\s+day)?[.!?]?$",
+        re.IGNORECASE,
+    )
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -26,6 +41,9 @@ class RuleBasedIntentInterpreter:
         today = today or datetime.now(ZoneInfo(self.settings.beacon_timezone)).date()
         compact = " ".join(message.strip().split())
         lowered = compact.casefold()
+        calendar_intent = self._calendar_event_intent(compact)
+        if calendar_intent is not None:
+            return calendar_intent
         context_intent = self._context_intent(compact)
         if context_intent is not None:
             return context_intent
@@ -103,6 +121,38 @@ class RuleBasedIntentInterpreter:
             deadline=target_date,
             duration_minutes=duration,
         )
+
+    def _calendar_event_intent(self, message: str) -> StructuredIntent | None:
+        match = self._daily_event_range.match(message)
+        if not match:
+            return None
+        year = int(match.group("year"))
+        start_month = match.group("start_month")
+        end_month = match.group("end_month") or start_month
+        start_date = datetime.strptime(
+            f"{start_month} {match.group('start_day')} {year}", "%B %d %Y"
+        ).date()
+        end_date = datetime.strptime(
+            f"{end_month} {match.group('end_day') or match.group('start_day')} {year}",
+            "%B %d %Y",
+        ).date()
+        return StructuredIntent(
+            intent=IntentType.CREATE_CALENDAR_EVENTS,
+            title=" ".join(match.group("title").strip().split()),
+            daily_event_range={
+                "start_date": start_date,
+                "end_date": end_date,
+                "daily_start_time": self._parse_clock(match.group("start_time")),
+                "daily_end_time": self._parse_clock(match.group("end_time")),
+                "repeat_daily": True,
+            },
+        )
+
+    @staticmethod
+    def _parse_clock(value: str):
+        compact = " ".join(value.upper().split())
+        pattern = "%I:%M %p" if ":" in compact else "%I %p"
+        return datetime.strptime(compact, pattern).time()
 
     def _context_intent(self, message: str) -> StructuredIntent | None:
         text = message.strip(" .!?\t\n")

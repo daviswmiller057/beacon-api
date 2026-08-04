@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     beacon_interaction_default_duration_minutes: Annotated[
         int, Field(ge=1, le=1440)
     ] = 60
+    beacon_max_daily_range_occurrences: Annotated[int, Field(ge=1, le=366)] = 31
     daily_brief_travel_enabled: bool = False
     daily_brief_weather_enabled: bool = False
     daily_brief_travel_buffer_minutes: Annotated[

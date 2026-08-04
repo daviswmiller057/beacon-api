@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.config import Settings, get_settings
 from app.models import (
@@ -17,6 +18,9 @@ class ActionPlanner:
         self.settings = settings or get_settings()
 
     def plan(self, intent: StructuredIntent, today: date) -> ActionPlan:
+        if intent.intent is IntentType.CREATE_CALENDAR_EVENTS:
+            return self._plan_daily_calendar_events(intent)
+
         relative_date, window_start, window_end, supported = self._time_constraint(
             intent.time_constraint, today
         )
@@ -127,6 +131,52 @@ class ActionPlanner:
                 create_event=intent.create_event,
             )
         )
+        return ActionPlan(intent=intent, actions=actions)
+
+    def _plan_daily_calendar_events(
+        self, intent: StructuredIntent
+    ) -> ActionPlan:
+        event_range = intent.daily_event_range
+        if event_range is None or not intent.title:
+            raise ValueError("daily_range_missing_required_fields")
+        if event_range.end_date < event_range.start_date:
+            raise ValueError("daily_range_end_before_start")
+        if event_range.daily_end_time <= event_range.daily_start_time:
+            raise ValueError("daily_range_end_time_not_after_start_time")
+        occurrence_count = (event_range.end_date - event_range.start_date).days + 1
+        if occurrence_count > self.settings.beacon_max_daily_range_occurrences:
+            raise ValueError(
+                "daily_range_occurrence_limit_exceeded: "
+                f"{occurrence_count} > "
+                f"{self.settings.beacon_max_daily_range_occurrences}"
+            )
+
+        timezone = ZoneInfo(self.settings.beacon_timezone)
+        actions = []
+        for offset in range(occurrence_count):
+            occurrence_date = event_range.start_date + timedelta(days=offset)
+            actions.append(
+                PlannedAction(
+                    action=ActionType.CREATE_CALENDAR_EVENT,
+                    title=intent.title,
+                    description=intent.description,
+                    calendar_name=(
+                        intent.calendar_name
+                        or self.settings.beacon_schedule_calendar
+                    ),
+                    start_iso=datetime.combine(
+                        occurrence_date,
+                        event_range.daily_start_time,
+                        tzinfo=timezone,
+                    ),
+                    end_iso=datetime.combine(
+                        occurrence_date,
+                        event_range.daily_end_time,
+                        tzinfo=timezone,
+                    ),
+                    source_reference=intent.source_reference,
+                )
+            )
         return ActionPlan(intent=intent, actions=actions)
 
     @staticmethod

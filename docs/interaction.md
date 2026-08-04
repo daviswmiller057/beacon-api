@@ -128,6 +128,7 @@ Supported intent values are:
 |---|---|---|
 | `CREATE_TASK` | non-empty `title` | Record a Vikunja task. |
 | `SCHEDULE_TASK` | exactly one of `task_id` or `title` | Ensure/resolve a task and schedule work. |
+| `CREATE_CALENDAR_EVENTS` | `title` and `daily_event_range` | Create fixed-time calendar events for one date or an inclusive bounded daily range. |
 | `BRIEF` | none | Generate a read-only Daily Brief. |
 | `UNKNOWN` | non-empty `clarification_question` | Ask the user for clarification without side effects. |
 
@@ -149,6 +150,7 @@ values:
 | `CREATE_TASK` | one `CREATE_TASK` action |
 | `SCHEDULE_TASK` by ID | one `SCHEDULE_WORK_BLOCK` action |
 | `SCHEDULE_TASK` by title | `CREATE_TASK` with safe reuse, then `SCHEDULE_WORK_BLOCK` |
+| `CREATE_CALENDAR_EVENTS` | one `CREATE_CALENDAR_EVENT` per inclusive date, validated before execution |
 | `BRIEF` | one `GENERATE_BRIEF` action |
 | `UNKNOWN` | one `REQUEST_CLARIFICATION` action |
 
@@ -175,6 +177,13 @@ An explicit `deadline` takes precedence over the date derived from
 `time_constraint`. With a date but no part of day, the executor uses 09:00–22:00.
 For today, the earliest bound is moved forward to the current time if later than
 09:00.
+
+Fixed-time calendar ranges do not use `time_constraint`. Their structured
+`daily_event_range` contains start/end dates, daily start/end times, and explicit
+daily repetition. The planner combines each date with `BEACON_TIMEZONE`, includes
+the end date, rejects overnight/reversed bounds, and rejects more than
+`BEACON_MAX_DAILY_RANGE_OCCURRENCES` actions (31 by default). Each action creates
+an independent event; Beacon does not emit a CalDAV recurrence rule.
 
 ## Executor behavior
 

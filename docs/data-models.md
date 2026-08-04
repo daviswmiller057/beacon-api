@@ -168,7 +168,8 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 
 ## Interaction models
 
-`IntentType` has `BRIEF`, `CREATE_TASK`, `SCHEDULE_TASK`, and `UNKNOWN`.
+`IntentType` includes `CREATE_CALENDAR_EVENTS` for fixed-time, bounded daily
+calendar ranges in addition to task, brief, context, and unknown intents.
 
 ### `StructuredIntent`
 
@@ -180,6 +181,9 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 | `deadline` | `date \| None` | Explicit/local target date; accepts legacy alias `target_date`. |
 | `time_constraint` | `str \| None` | Length `1..100`; interpreted only by deterministic planner policy. |
 | `duration_minutes` | `int \| None` | When present, `1..1440`. |
+| `daily_event_range` | `DailyEventRange \| None` | Inclusive dates, fixed local start/end times, and `repeat_daily=true`. |
+| `description` | `str`, `""` | Calendar event description, maximum 5000 characters. |
+| `calendar_name` | `str \| None` | Optional destination calendar; defaults to Beacon's schedule calendar. |
 | `clarification_question` | `str \| None` | Length `1..500`; required for `UNKNOWN`. |
 | `create_event` | `bool`, `True` | Compatibility input, excluded from serialized intent and Gemini schema. |
 
@@ -190,8 +194,8 @@ present when not used by a particular intent; planner behavior is authoritative.
 ### `PlannedAction` and `ActionPlan`
 
 `ActionPlan` contains the accepted intent and ordered `PlannedAction` values.
-Action types are `CREATE_TASK`, `SCHEDULE_WORK_BLOCK`, `GENERATE_BRIEF`, and
-`REQUEST_CLARIFICATION`. Plan fields are Beacon decisions and are never supplied
+Action types include `CREATE_CALENDAR_EVENT` alongside task, brief,
+clarification, and context actions. Plan fields are Beacon decisions and are never supplied
 by an interpreter.
 
 | `PlannedAction` field | Type/default | Meaning |
@@ -206,6 +210,7 @@ by an interpreter.
 | `create_event` | `bool`, `True` | Whether scheduling may write. |
 | `reuse_existing` | `bool`, `False` | Whether executor should safely resolve title before creation. |
 | `question` | `str \| None` | Clarification text. |
+| `start_iso` / `end_iso` | `datetime \| None` | Timezone-aware exact bounds for one atomic calendar event. |
 
 ### `InteractRequest`
 
@@ -229,6 +234,7 @@ returned provenance, not persisted audit state.
 | `brief` | `DailyBriefResponse \| None` | Populated for brief actions. |
 | `schedule` | `ScheduleTaskResponse \| None` | Populated for scheduling actions. |
 | `task` | `VikunjaTask \| None` | Created/resolved task where applicable. |
+| `calendar_batch` | `CalendarBatchResult \| None` | Complete, partial, or failed batch with per-action event/error results. |
 
 A clarification response has no external result object. A scheduling flow may
 include both `task` and `schedule`.

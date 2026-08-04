@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
@@ -88,6 +88,70 @@ class CalendarEventResult(BaseModel):
     title: str
     start_iso: datetime
     end_iso: datetime
+
+
+class DailyEventRange(BaseModel):
+    """One fixed local-time event on every date in an inclusive bounded range."""
+
+    start_date: date
+    end_date: date
+    daily_start_time: time
+    daily_end_time: time
+    repeat_daily: Literal[True] = True
+
+    @model_validator(mode="after")
+    def validate_bounds(self):
+        if self.end_date < self.start_date:
+            raise ValueError("daily_range_end_before_start")
+        if self.daily_end_time <= self.daily_start_time:
+            raise ValueError("daily_range_end_time_not_after_start_time")
+        return self
+
+
+class CalendarEventCreateRequest(BaseModel):
+    title: Annotated[str, Field(min_length=1, max_length=500)]
+    description: Annotated[str, Field(max_length=5000)] = ""
+    calendar_name: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    start_iso: datetime
+    end_iso: datetime
+    source_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def validate_event_bounds(self):
+        if self.start_iso.tzinfo is None or self.end_iso.tzinfo is None:
+            raise ValueError("calendar_event_datetimes_must_be_timezone_aware")
+        if self.end_iso <= self.start_iso:
+            raise ValueError("calendar_event_end_not_after_start")
+        return self
+
+
+class CalendarActionStatus(StrEnum):
+    CREATED = "CREATED"
+    FAILED = "FAILED"
+
+
+class CalendarBatchStatus(StrEnum):
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+
+
+class CalendarActionResult(BaseModel):
+    index: int
+    status: CalendarActionStatus
+    start_iso: datetime
+    end_iso: datetime
+    event: CalendarEventResult | None = None
+    error_code: str | None = None
+    error: str | None = None
+
+
+class CalendarBatchResult(BaseModel):
+    status: CalendarBatchStatus
+    action_count: int
+    completed_count: int
+    failed_count: int
+    results: list[CalendarActionResult]
 
 
 class ScheduleStatus(StrEnum):
@@ -205,6 +269,7 @@ class IntentType(StrEnum):
     BRIEF = "BRIEF"
     CREATE_TASK = "CREATE_TASK"
     SCHEDULE_TASK = "SCHEDULE_TASK"
+    CREATE_CALENDAR_EVENTS = "CREATE_CALENDAR_EVENTS"
     STORE_CONTEXT = "STORE_CONTEXT"
     QUERY_CONTEXT = "QUERY_CONTEXT"
     FORGET_CONTEXT = "FORGET_CONTEXT"
@@ -232,6 +297,9 @@ class StructuredIntent(BaseModel):
     )
     time_constraint: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     duration_minutes: Annotated[int, Field(gt=0, le=1440)] | None = None
+    daily_event_range: DailyEventRange | None = None
+    description: Annotated[str, Field(max_length=5000)] = ""
+    calendar_name: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     clarification_question: Annotated[
         str, Field(min_length=1, max_length=500)
     ] | None = None
@@ -262,6 +330,15 @@ class StructuredIntent(BaseModel):
                 )
         if self.intent is IntentType.CREATE_TASK and not self.title:
             raise ValueError("CREATE_TASK requires title")
+        if self.intent is IntentType.CREATE_CALENDAR_EVENTS:
+            if not self.title or self.daily_event_range is None:
+                raise ValueError(
+                    "CREATE_CALENDAR_EVENTS requires title and daily_event_range"
+                )
+            if self.time_constraint is not None:
+                raise ValueError(
+                    "CREATE_CALENDAR_EVENTS must use structured daily_event_range"
+                )
         if self.intent is IntentType.UNKNOWN and not self.clarification_question:
             raise ValueError("UNKNOWN requires clarification_question")
         if self.intent is IntentType.QUERY_CONTEXT:
@@ -327,6 +404,7 @@ class StructuredIntent(BaseModel):
 class ActionType(StrEnum):
     CREATE_TASK = "CREATE_TASK"
     SCHEDULE_WORK_BLOCK = "SCHEDULE_WORK_BLOCK"
+    CREATE_CALENDAR_EVENT = "CREATE_CALENDAR_EVENT"
     GENERATE_BRIEF = "GENERATE_BRIEF"
     REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
     QUERY_CONTEXT = "QUERY_CONTEXT"
@@ -336,6 +414,10 @@ class ActionType(StrEnum):
 class PlannedAction(BaseModel):
     action: ActionType
     title: str | None = None
+    description: str = ""
+    calendar_name: str | None = None
+    start_iso: datetime | None = None
+    end_iso: datetime | None = None
     task_id: int | None = None
     deadline: date | None = None
     window_start: str | None = None
@@ -392,6 +474,7 @@ class InteractResponse(BaseModel):
     schedule: ScheduleTaskResponse | None = None
     task: VikunjaTask | None = None
     context: EntityContextResult | ContextMutationResult | None = None
+    calendar_batch: CalendarBatchResult | None = None
 
 
 class ServiceStatusResponse(BaseModel):

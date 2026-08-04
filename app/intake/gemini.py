@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Protocol
 
 import httpx
@@ -23,6 +24,11 @@ Return only data matching the supplied schema. Never select services, projects,
 calendars, time slots, API calls, or actions. Supported intents:
 - CREATE_TASK: the user wants a task recorded but does not ask for focused time.
 - SCHEDULE_TASK: the user asks to work on or schedule something.
+- CREATE_CALENDAR_EVENTS: the user specifies an event title and an exact date or
+  inclusive bounded date range with fixed start/end times. Put normalized ISO
+  dates and local times in daily_event_range, set repeat_daily=true, and do not
+  put the range in time_constraint. A single explicit date uses equal start_date
+  and end_date. Do not expand the dates into occurrences yourself.
 - BRIEF: the user asks for their day/brief/status.
 - STORE_CONTEXT: only an explicit request to remember, define an alias, state a
   user-specific fact, relationship, or correction. Use CREATE_ENTITY, ADD_ALIAS,
@@ -44,7 +50,9 @@ Do not classify ordinary conversation, task creation, or calendar requests as
 context writes. A context write must be explicit (for example remember, when I
 say X I mean Y, X means Y in a teaching context, forget, or correct).
 Preserve relative phrases such as today, tomorrow, and tomorrow afternoon in
-time_constraint. Only populate deadline when the user gave an explicit ISO date.
+time_constraint only for task scheduling. Only populate deadline when the user
+gave an explicit ISO date. Exact fixed-time calendar events use
+CREATE_CALENDAR_EVENTS and daily_event_range instead.
 Use title for the human's task wording and omit fields not stated by the user."""
 
     def __init__(
@@ -66,7 +74,9 @@ Use title for the human's task wording and omit fields not stated by the user.""
         self.client = client or httpx
         self.timeout_seconds = timeout_seconds
 
-    def interpret(self, message: str) -> StructuredIntent:
+    def interpret(
+        self, message: str, today: date | None = None
+    ) -> StructuredIntent:
         try:
             response = self.client.post(
                 f"{self.base_url}/models/{self.model}:generateContent",

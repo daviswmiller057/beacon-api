@@ -76,6 +76,7 @@ after first access must call `get_settings.cache_clear()` or start a new process
 | `BEACON_CALENDARS` | `theater,school,personal` | Comma-separated busy-calendar display names. Values are trimmed; empty values are removed; at least one must remain. |
 | `BEACON_SCHEDULE_CALENDAR` | `personal` | Default destination calendar for Beacon work blocks. |
 | `BEACON_INTERACTION_DEFAULT_DURATION_MINUTES` | `60` | Default natural-language work-block duration, integer `1..1440`. |
+| `BEACON_MAX_DAILY_RANGE_OCCURRENCES` | `31` | Maximum number of independently created daily calendar events in one bounded range. |
 | `VIKUNJA_DEFAULT_PROJECT_ID` | unset | Positive integer. Required only when an intake flow must create a Vikunja task. Blank environment values become unset. |
 
 ### Interpreter settings
