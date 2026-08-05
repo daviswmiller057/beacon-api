@@ -51,6 +51,7 @@ scopes. Never place the key in a URL or commit it to source control.
 | `POST /v1/availability` | yes | no | Explicit ranked availability calculation. |
 | `POST /v1/schedule/task/{task_id}` | yes | configurable | Explicit scheduling lifecycle for one existing task. |
 | `GET /v1/brief/daily` | yes | no | Versioned Daily Brief endpoint. |
+| `GET /api/v1/dashboard/today` | yes | no | Native-client Today snapshot. |
 
 ## `GET /health`
 
@@ -172,6 +173,23 @@ Common interaction errors:
 | `503` | Interpreter configuration failure discovered while handling the request. Gemini-key absence is normally caught at startup first. |
 
 See [Interaction](interaction.md) for grammar, planning, and execution details.
+
+## `GET /api/v1/dashboard/today`
+
+Returns schema version 1 of the authenticated, read-only native Today snapshot.
+It uses the standard `X-Beacon-API-Key` header and configured `BEACON_API_KEY`;
+there is no separate native-client credential. The route delegates to
+`TodayDashboardService`, which projects existing deterministic Daily Brief data.
+
+The response contains `schema_version`, `generated_at`, `timezone`,
+`local_date`, `display_name`, `next_event`, `focus`, `attention_items`,
+`priority_tasks`, and `recommended_action`. See the
+[Today dashboard guide](today-dashboard.md) for the exact nested schema,
+enum values, null semantics, and a sanitized example.
+
+Expected integration failures follow Daily Brief's established partial-data
+behavior. An unexpected generation or mapping failure returns a generic `502`
+without a raw provider response or exception message.
 
 ## `POST /v1/conversation`
 

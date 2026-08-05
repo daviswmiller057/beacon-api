@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.api.availability import router as availability_router
 from app.api.conversation import router as conversation_router
+from app.api.dashboard import router as dashboard_router
 from app.api.daily_brief import router as daily_brief_router
 from app.api.health import router as health_router
 from app.api.interface import router as interface_router
@@ -55,3 +56,4 @@ app.include_router(conversation_router)
 app.include_router(availability_router, prefix="/v1")
 app.include_router(scheduling_router, prefix="/v1/schedule")
 app.include_router(daily_brief_router, prefix="/v1/brief")
+app.include_router(dashboard_router, prefix="/api/v1/dashboard")
