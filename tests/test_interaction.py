@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.api import interface as interface_route
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models import (
     AvailabilityOption,
     DailyBriefCalendar,
@@ -45,6 +45,7 @@ def settings() -> Settings:
         beacon_calendars="personal",
         beacon_schedule_calendar="personal",
         beacon_timezone="America/Chicago",
+        beacon_interpreter="rules",
     )
 
 
@@ -116,12 +117,14 @@ class FakeBrief:
 
 
 def interaction_service(tasks=None):
+    config = settings()
     scheduler = FakeScheduler()
     service = InteractionService(
         vikunja=FakeVikunja(tasks or [task()]),
         scheduler=scheduler,
         daily_brief=FakeBrief(),
-        settings=settings(),
+        interpreter=RuleBasedIntentInterpreter(config),
+        settings=config,
         clock=lambda timezone: NOW.astimezone(timezone),
     )
     return service, scheduler
@@ -222,15 +225,21 @@ def test_unsupported_interaction_maps_to_400(monkeypatch):
     assert raised.value.status_code == 400
 
 
-def test_status_is_secret_safe_and_reports_boundaries():
-    response = interface_route.service_status()
-    assert response.status == "ok"
-    assert response.integrations["nextcloud"] is True
-    assert response.interaction_modes == [
-        "natural_language",
-        "structured_intent",
-    ]
-    assert "token" not in response.model_dump_json().casefold()
+def test_status_is_secret_safe_and_reports_boundaries(monkeypatch):
+    monkeypatch.setenv("CONVERSATION_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        response = interface_route.service_status()
+        assert response.status == "ok"
+        assert response.integrations["nextcloud"] is True
+        assert response.interaction_modes == [
+            "natural_language",
+            "structured_intent",
+            "conversation",
+        ]
+        assert "token" not in response.model_dump_json().casefold()
+    finally:
+        get_settings.cache_clear()
 
 
 def test_interact_endpoint_is_the_authenticated_front_door(monkeypatch):
