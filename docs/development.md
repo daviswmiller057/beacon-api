@@ -213,3 +213,15 @@ docs/               maintained engineering documentation
 
 Never commit `.env`, API keys, tokens, app passwords, private service URLs, or
 captured external payloads.
+
+Generate a Beacon API key with a cryptographically secure local command, then
+place the result only in the uncommitted `.env` file:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+The native Today endpoint reuses `BEACON_API_KEY`; it does not introduce a
+second token setting. Run its focused tests with
+`.venv/bin/python -m pytest tests/test_dashboard.py -q`, and run the complete
+suite with `.venv/bin/python -m pytest`.

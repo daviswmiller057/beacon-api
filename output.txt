@@ -1,175 +1,402 @@
-Beacon LLM Conversation Runtime Bug Fix Report
+# Beacon Today Dashboard API — Implementation Report
 
-Completion status
-Complete for the reported runtime defect.
+## Overall status
 
-Root cause
-The conversation dependency factory in app/api/conversation.py constructed the
-settings, database, Gemini provider, repository inputs, and deterministic
-InteractionService, but it never returned a ConversationService. The intended
-return statement was incorrectly placed at the end of
-conversation_service_dependency(), after branches that already return or raise.
-Consequently get_conversation_service() returned None and FastAPI injected None
-as the endpoint service. The first request then failed when the endpoint called
-service.converse(request).
+Implemented with validation limitations
 
-Surgical fix
-- Moved ConversationService construction and return into
-  get_conversation_service(), immediately after its dependencies are built.
-- Removed the unreachable construction block from
-  conversation_service_dependency().
-- Added a regression test proving that the cached production factory returns
-  the constructed service.
-- No planner, executor, provider, persistence, tool, prompt, or external-service
-  architecture was redesigned.
+## Repository state
 
-Files changed by this fix
-- app/api/conversation.py
-  Returns the configured ConversationService from the cached factory.
-- tests/test_conversation_api.py
-  Adds test_conversation_service_factory_returns_constructed_service using
-  synthetic fakes only; it makes no provider or external-service request.
-- output.txt
-  Overwritten with this report as requested.
+- Current repository: `/Users/davismiller/Projects/beacon-api`
+- Current branch: `feature/today-dashboard-api`
+- The original implementation task began on this branch with a clean status:
 
-Verification
-1. Targeted conversation regression suite
+  ```text
+  ## feature/today-dashboard-api
+  ```
 
-   PYTHONPATH=. .venv/bin/python -m pytest -q \
-     tests/test_conversation_api.py tests/test_cli.py \
-     tests/test_conversation.py tests/test_conversation_provider.py \
-     tests/test_conversation_repository.py
+- Initial status for this reporting task:
 
-   Result: exit 0; 52 passed; 16 FastAPI/Python 3.14 deprecation warnings.
-
-2. Python import/bytecode smoke check
-
-   PYTHONPATH=. .venv/bin/python -m compileall -q app tests
-
-   Result: exit 0.
-
-3. Diff whitespace validation
-
-   git diff --check
-
-   Result: exit 0; no whitespace errors.
-
-4. Formatter/linter attempt
-
-   .venv/bin/ruff format --check app/api/conversation.py \
-     tests/test_conversation_api.py
-
-   Result: not run because .venv/bin/ruff does not exist. The repository has no
-   pyproject.toml, setup.cfg, tox.ini, or Ruff dependency/configuration.
-
-5. Full suite attempt
-
-   PYTHONPATH=. .venv/bin/python -m pytest -q
-
-   Result: the run reached 94 passing tests and then hung in the pre-existing
-   synchronous FastAPI TestClient test
-   tests/test_daily_brief.py::test_daily_brief_endpoint_accepts_date_override.
-   It was interrupted without changing files.
-
-   Running that test alone under a bounded command:
-
-   timeout 20s env PYTHONPATH=. .venv/bin/python -m pytest -vv \
-     tests/test_daily_brief.py::test_daily_brief_endpoint_accepts_date_override
-
-   Result: exit 124 (timeout), confirming the environment-specific hang.
-
-   A run deselecting all five pre-existing synchronous TestClient cases
-   completed with 144 passed, 5 deselected, and 1 failed. The remaining failure
-   is tests/test_interaction.py::test_status_is_secret_safe_and_reports_boundaries:
-   the application already reports the implemented "conversation" mode, while
-   the older assertion expects only "natural_language" and "structured_intent".
-   Neither pre-existing issue was changed as part of this surgical runtime fix.
-
-6. Final post-report regression check
-
-   PYTHONPATH=. .venv/bin/python -m pytest -q \
-     tests/test_conversation_api.py tests/test_conversation_provider.py
-
-   Result: exit 0; 9 passed; 16 FastAPI/Python 3.14 deprecation warnings.
-   A final git diff --check also exited 0.
-
-Docker reproduction
-The exact Docker CLI command could not be rerun from this Codex execution
-session because access to /var/run/docker.sock was denied. No Docker or volume
-operation was attempted after that permission failure. The repaired code path
-is covered directly at the service factory and conversation API layers, and all
-52 conversation-related tests pass.
-
-Documentation
-The existing conversation documentation remains accurate; this patch corrects
-factory control flow and does not change the documented API, CLI, configuration,
-or architecture. No additional documentation behavior was invented.
-
-Repository state
-- Active branch throughout: LLM-interaction
-- No branch was created or switched.
-- The working tree already contained the full uncommitted conversation feature
-  and documentation before this fix. Those changes were preserved.
-- Final git status is recorded below exactly:
-
-  ## LLM-interaction
-   M .env.example
-   M ARCHITECTURE_REVIEW.md
-   M CLI_USAGE.md
-   M INTAKE_ARCHITECTURE.md
+  ```text
+  ## feature/today-dashboard-api
    M README.md
-   M app/api/interface.py
-   M app/cli/__init__.py
-   M app/config.py
-   M app/context/database.py
    M app/main.py
-   M app/services/interaction.py
-   M docker-compose.yml
+   M app/models.py
    M docs/README.md
    M docs/api-reference.md
    M docs/architecture.md
    M docs/data-models.md
-   M docs/debugging-notes.md
    M docs/development.md
-   M docs/integrations.md
-   M docs/interaction.md
-   M docs/roadmap.md
    M output.txt
-   M requirements.txt
-   M tests/test_cli.py
-   M tests/test_context_registry.py
-  ?? app/api/conversation.py
-  ?? app/context/migrations/002_conversation.down.sql
-  ?? app/context/migrations/002_conversation.sql
-  ?? app/conversation/
-  ?? docs/conversation.md
-  ?? tests/test_conversation.py
-  ?? tests/test_conversation_api.py
-  ?? tests/test_conversation_provider.py
-  ?? tests/test_conversation_repository.py
+  ?? app/api/dashboard.py
+  ?? app/services/dashboard.py
+  ?? docs/today-dashboard.md
+  ?? tests/test_dashboard.py
+  ```
 
-Safety confirmation
-- Commits: none
-- Pushes/pulls/fetches: none
-- Branch creation or switching: none
-- Merges/rebases/resets/stashes/restores: none
-- Discarded pre-existing changes: none
-- Git remote or tag changes: none
-- Secret or .env changes by this fix: none
-- Database or volume deletion: none
-- Production external writes: none
-- Gemini requests: none
-- Nextcloud, CalDAV, Vikunja, Home Assistant, notification, or other external
-  life-management writes: none
+- Final status is the same set of application and documentation changes;
+  `output.txt` has been completely replaced by this report.
+- No commit, push, pull, fetch, merge, rebase, reset, checkout, restore, tag,
+  branch change, stash, remote change, or other Git history/remote operation
+  occurred during this reporting task.
 
-Recommended container verification
-After the updated source is present in the running container, use a fresh client
-message ID to avoid an intentional idempotency conflict with prior attempts:
+## Effective API contract
 
-  docker compose up -d --build beacon-api
-  docker compose exec beacon-api python -m app.cli \
-    --conversation \
-    --client-message-id runtime-factory-fix-001 \
-    "What can Beacon do?"
+- HTTP method: `GET`
+- Effective public endpoint: `/api/v1/dashboard/today`
+- Authentication header: `X-Beacon-API-Key: <configured key>`
+- Authentication environment variable: `BEACON_API_KEY`
+- Content type: JSON with snake_case field names.
 
-This request is conversational and should perform no Beacon external write.
+Exact top-level fields:
+
+- `schema_version`: integer literal `1`
+- `generated_at`: timezone-aware RFC 3339/ISO-8601 timestamp
+- `timezone`: configured IANA timezone name
+- `local_date`: ISO calendar date in that timezone
+- `display_name`: nullable string
+- `next_event`: nullable event summary
+- `focus`: nullable task summary
+- `attention_items`: array of attention items
+- `priority_tasks`: array of task summaries
+- `recommended_action`: nullable recommended-action summary
+
+Nested event-summary fields:
+
+- `id`: string
+- `title`: string
+- `start_at`: timezone-aware timestamp
+- `end_at`: timezone-aware timestamp, strictly after `start_at`
+- `location`: nullable string
+- `leave_by_at`: nullable timezone-aware timestamp
+- `calendar_name`: nullable string
+
+Nested task-summary fields:
+
+- `id`: string
+- `title`: string
+- `project_name`: nullable string
+- `priority`: `none`, `low`, `medium`, `high`, `urgent`, or `do_now`
+- `due_at`: nullable timezone-aware timestamp
+- `completed`: boolean
+
+Nested attention-item fields:
+
+- `id`: string
+- `title`: string
+- `detail`: nullable string
+- `severity`: `info`, `warning`, or `critical`
+- `source`: `task` or `calendar`
+
+Nested recommended-action fields:
+
+- `title`: string
+- `detail`: nullable string
+- `kind`: `review`
+- `related_id`: nullable string
+
+Sanitized example response:
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-04T08:30:00-05:00",
+  "timezone": "America/Chicago",
+  "local_date": "2026-08-04",
+  "display_name": null,
+  "next_event": {
+    "id": "calendar-event-7",
+    "title": "Production meeting",
+    "start_at": "2026-08-04T09:00:00-05:00",
+    "end_at": "2026-08-04T10:00:00-05:00",
+    "location": "Main Theater",
+    "leave_by_at": null,
+    "calendar_name": "personal"
+  },
+  "focus": null,
+  "attention_items": [
+    {
+      "id": "overdue_task:42",
+      "title": "Submit lighting order",
+      "detail": "Due 2026-08-03T17:00:00-05:00",
+      "severity": "warning",
+      "source": "task"
+    }
+  ],
+  "priority_tasks": [
+    {
+      "id": "42",
+      "title": "Submit lighting order",
+      "project_name": null,
+      "priority": "urgent",
+      "due_at": "2026-08-03T17:00:00-05:00",
+      "completed": false
+    }
+  ],
+  "recommended_action": null
+}
+```
+
+Null and empty-array semantics:
+
+- `display_name` is null because Beacon has no deterministic display-name
+  source.
+- `next_event` is null when the existing calendar snapshot has no current or
+  next ordinary event, or calendar data is unavailable.
+- `focus` is null because Beacon has no supported deterministic focus-selection
+  behavior.
+- `attention_items` is empty when there are no real overdue tasks or supported
+  attention concepts available.
+- `priority_tasks` is empty when no qualifying incomplete tasks are exposed by
+  the existing Daily Brief task groups or task data is unavailable.
+- `recommended_action` is null because Beacon has no supported deterministic
+  recommendation behavior.
+- Unsupported intelligence is omitted rather than fabricated.
+
+## Architecture
+
+Route layer:
+
+- `app/main.py` mounts `app.api.dashboard` at `/api/v1/dashboard`.
+- The router defines only `/today`, producing the exact effective path
+  `GET /api/v1/dashboard/today` without duplicating the prefix.
+- The route authenticates through a router dependency, resolves an injectable
+  `TodayDashboardService`, invokes `build()`, and returns the explicit
+  `TodayDashboardResponse` model.
+- The route imports and invokes no Vikunja, CalDAV, Nextcloud, Waze, Home
+  Assistant, Gemini, n8n, HTTP, scheduling, or mutation client.
+
+Dashboard assembly service:
+
+- `TodayDashboardService` is a read-only projection over the existing
+  `DailyBriefService` response.
+- It maps provider IDs to stable strings, normalizes boundary datetimes to the
+  configured timezone, limits qualifying priority tasks to five, maps existing
+  overdue tasks to attention items, and leaves unsupported sections null.
+- It adds no scheduling, rescheduling, conflict-severity, focus, recommendation,
+  or model-generated policy.
+
+Existing task and calendar service usage:
+
+- `DailyBriefService` calls the existing `VikunjaClient.list_tasks()` read
+  interface and `CalDAVService.fetch_calendar_events()` read interface.
+- The dashboard service consumes the already-normalized Daily Brief output. It
+  does not call provider adapters itself.
+- `project_name` remains null because the normalized Vikunja task model exposes
+  a numeric project ID but no project-name lookup.
+
+Clock and timezone handling:
+
+- `DailyBriefService` already accepts an injectable clock with signature
+  `Callable[[ZoneInfo], datetime]`.
+- It loads configured `BEACON_TIMEZONE`, obtains `generated_at` from that clock,
+  derives the local date in that timezone, and uses timezone-aware day bounds.
+- The dashboard maps generated, event, due, and leave-by timestamps into the
+  same configured timezone. Its response models reject naive timestamps, and
+  the event model rejects end times that do not follow start times.
+
+Authentication boundary:
+
+- The endpoint reuses `require_api_key` from `app/security.py`.
+- That dependency reads `X-Beacon-API-Key`, compares it to required setting
+  `BEACON_API_KEY` with timing-safe `hmac.compare_digest`, and returns the same
+  401 detail for missing and invalid values.
+- No parallel iOS-specific token or broader authentication system was added.
+
+Error behavior:
+
+- Existing Daily Brief behavior preserves partial results when calendar or
+  task reads fail; provider exception details remain inside its warnings and
+  are not projected into the dashboard response.
+- An unexpected dashboard assembly failure returns generic HTTP 502 detail
+  `Today dashboard generation failed` without exposing a raw exception or
+  provider payload.
+- The route does not broadly convert failures into fabricated success data.
+
+## Data-source behavior
+
+### next_event
+
+- Real source: `DailyBriefService.summary.next_event`, built from
+  `CalDAVService.fetch_calendar_events()`.
+- Existing deterministic rule: exclude Beacon work blocks; for today's
+  snapshot select the first ordinary event whose end is after `generated_at`,
+  allowing an event already in progress. Return null when none exists.
+- The event's CalDAV UID becomes its string ID. When the normalized event has no
+  UID, the dashboard uses a deterministic SHA-256 identifier derived from
+  calendar, title, start, and end.
+- `leave_by_at` is populated only when the existing enabled Daily Brief travel
+  behavior produced a matching estimate; otherwise it is null.
+
+### focus
+
+- Current value: null.
+- Reason: the backend has deterministic highest-priority task selection, but no
+  distinct supported focus-selection behavior. The implementation does not
+  equate the first task with focus.
+
+### attention_items
+
+- Real source: `DailyBriefService.tasks.overdue`.
+- Existing deterministic rule: incomplete tasks with a due date before the
+  configured local date become warning-severity task attention items.
+- The array is empty when no overdue tasks exist or task data is unavailable.
+- Existing calendar conflicts are not mapped because no established dashboard
+  severity policy exists for them.
+
+### priority_tasks
+
+- Real source: the existing Daily Brief highest-priority, overdue, and due-today
+  task groups, all ultimately supplied by `VikunjaClient.list_tasks()`.
+- Existing deterministic rule: highest priority uses provider priority
+  descending, due timestamp ascending with missing due dates last, and numeric
+  task ID ascending. The dashboard places that task first, then remaining
+  overdue tasks and due-today tasks in their existing order, removes
+  duplicates, excludes completed tasks, and limits the response to five.
+- Numeric task IDs are serialized as strings. Integer priority maps to the
+  documented boundary enum: nonpositive to `none`, 1 to `low`, 2 to `medium`,
+  3 to `high`, 4 to `urgent`, and 5 or greater to `do_now`.
+
+### recommended_action
+
+- Current value: null.
+- Reason: no existing deterministic recommendation behavior supplies a native
+  dashboard action. No heuristic or model-generated action is fabricated.
+
+## Files created
+
+- `app/api/dashboard.py` — authenticated thin Today dashboard route and
+  injectable service dependency.
+- `app/services/dashboard.py` — deterministic typed dashboard projection over
+  Daily Brief output.
+- `docs/today-dashboard.md` — endpoint contract, example, semantics, and client
+  compatibility guidance.
+- `tests/test_dashboard.py` — deterministic route, auth, service mapping,
+  degradation, identifier, timestamp, and model-validation tests.
+
+## Files modified
+
+- `README.md` — lists the effective Today dashboard endpoint and links its
+  guide.
+- `app/main.py` — imports and mounts the dashboard router.
+- `app/models.py` — adds explicit dashboard models, enums, and timestamp/event
+  validators.
+- `docs/README.md` — adds the Today dashboard guide to the documentation index.
+- `docs/api-reference.md` — documents endpoint, auth, response, degradation,
+  and generic error behavior.
+- `docs/architecture.md` — documents the native route and service boundary.
+- `docs/data-models.md` — records the schema-versioned dashboard model boundary.
+- `docs/development.md` — documents secure API-key generation and dashboard/full
+  test commands.
+- `output.txt` — completely overwritten with this backend implementation
+  report.
+
+## Validation
+
+Commands run during this reporting task and their actual results:
+
+- `pwd`: exit 0; returned
+  `/Users/davismiller/Projects/beacon-api`.
+- `git status --short --branch`: exit 0; returned branch
+  `feature/today-dashboard-api` and the modified/untracked files listed under
+  Repository state.
+- `git diff` plus direct reads of all new dashboard files, auth, config, main,
+  Daily Brief, Vikunja, and CalDAV modules: exit 0; implementation and complete
+  working-tree changes inspected.
+- `.venv/bin/python -m pytest tests/test_dashboard.py -q`: exit 127;
+  `.venv/bin/python` does not exist in this checkout, so no targeted tests ran.
+- `.venv/bin/python -m pytest`: exit 127; `.venv/bin/python` does not exist, so
+  the full suite did not start.
+- `python3.12 -m pytest tests/test_dashboard.py -q`: exit 1; system Python 3.12
+  reports `No module named pytest`, so no targeted tests ran.
+- `python3.12 -m pytest`: exit 1; system Python 3.12 reports
+  `No module named pytest`, so the full suite did not start.
+- `python3.12 -m compileall -q app tests`: exit 0; all application and test
+  source compiled successfully.
+- `git diff --check`: exit 0; no whitespace errors.
+- `realpath output.txt`: exit 0; returned
+  `/Users/davismiller/Projects/beacon-api/output.txt`.
+- `head -n 5 output.txt`: exit 0; confirmed the required title on line 1 and
+  status section at the start of the file.
+- `grep -n "dashboard/today" output.txt`: exit 0; found the effective endpoint
+  in the contract and architecture sections.
+- Legacy iOS-report title absence check: produced no match; the prohibited old
+  report title is absent.
+- `wc -l output.txt`: exit 0; reported 391 lines before this validation detail
+  was expanded.
+- Final `git diff --check`: exit 0 after the report replacement; no whitespace
+  errors.
+- Final `git status --short --branch`: exit 0; branch and changed-file set
+  remained as recorded under Repository state.
+
+The repository has no configured formatter, linter, or static type checker, so
+no such check is claimed.
+
+## Test results
+
+- Targeted dashboard pytest file: 0 run, 0 passed, 0 failed, 0 skipped because
+  neither the documented virtual environment nor a pytest-enabled Python 3.12
+  environment is available. The file defines 9 focused tests.
+- Complete pytest suite: 0 run, 0 passed, 0 failed, 0 skipped because pytest
+  could not start.
+- Compilation: passed for all `app` and `tests` Python source.
+- Therefore the full test suite did not pass; it was not runnable in this
+  environment.
+
+## Security behavior
+
+- Authentication fails closed: `BEACON_API_KEY` is a required nonblank setting,
+  and missing or invalid request headers receive the same 401 response.
+- The key is read from environment-backed settings and compared with
+  `hmac.compare_digest`; it is never hardcoded or returned.
+- The route does not log the key or any request credential.
+- Unexpected dashboard failures use a fixed generic 502 message rather than
+  raw exceptions, provider responses, credentials, or internal endpoints.
+- No new token setting was needed because the established API-key boundary is
+  suitable and reused.
+- Inspection of the complete diff found no real token, password, private key,
+  production URL, or other secret.
+
+## Assumptions
+
+- The established shared `BEACON_API_KEY` remains the authoritative auth
+  mechanism because it already protects every non-health application endpoint.
+- The `/api/v1` segment is explicitly part of this router mount because the
+  application has no global `/api/v1` prefix.
+- Vikunja integer priority values retain their existing provider semantics when
+  translated into the documented API enum; the translation does not alter task
+  ranking.
+- A deterministic content hash is the only available stable fallback for the
+  rare normalized calendar event without a UID.
+- Reusing Daily Brief's existing partial-degradation behavior is preferable to
+  failing the whole dashboard when one read source is unavailable.
+
+## Known limitations
+
+- The targeted and full pytest suites were not runnable because `.venv` is
+  absent and system Python 3.12 lacks pytest. Full-suite compatibility is not
+  claimed.
+- `display_name`, `focus`, and `recommended_action` remain null because the
+  backend has no corresponding deterministic capability.
+- `project_name` remains null because no existing project-name lookup is
+  available.
+- Attention items currently represent overdue tasks only; no new calendar
+  conflict severity policy was invented.
+- Priority tasks are limited to the task information already exposed by Daily
+  Brief. The implementation does not perform a second provider read merely to
+  fill the list.
+- This endpoint has no write, scheduling, rescheduling, creation, deletion,
+  OAuth, session, account, refresh-token, or client-side behavior.
+
+## Recommended next step
+
+Connect beacon-ios through a live Today provider while retaining explicit mock
+mode, then run the focused dashboard tests and complete backend suite in the
+project's fully provisioned Python 3.12 environment.
+
+## Safety confirmation
+
+- No secrets were added.
+- No production external write occurred.
+- beacon-ios was not accessed or modified.
+- No direct integration access was added to the route.
+- No unrelated backend behavior was changed.

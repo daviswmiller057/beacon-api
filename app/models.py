@@ -2,7 +2,14 @@ from datetime import date, datetime, time
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.context.domain import (
     ContextMutationResult,
@@ -263,6 +270,104 @@ class DailyBriefResponse(BaseModel):
     conflicts: list[BriefConflict]
     summary: DailyBriefSummary
     spoken_summary: str
+
+
+class DashboardTaskPriority(StrEnum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+    DO_NOW = "do_now"
+
+
+class DashboardAttentionSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class DashboardAttentionSource(StrEnum):
+    TASK = "task"
+    CALENDAR = "calendar"
+
+
+class DashboardRecommendedActionKind(StrEnum):
+    REVIEW = "review"
+
+
+class DashboardEventSummary(BaseModel):
+    id: str
+    title: str
+    start_at: datetime
+    end_at: datetime
+    location: str | None = None
+    leave_by_at: datetime | None = None
+    calendar_name: str | None = None
+
+    @field_validator("start_at", "end_at", "leave_by_at")
+    @classmethod
+    def timestamps_are_timezone_aware(cls, value: datetime | None):
+        if value is not None and value.tzinfo is None:
+            raise ValueError("dashboard_timestamps_must_be_timezone_aware")
+        return value
+
+    @model_validator(mode="after")
+    def validate_event_bounds(self):
+        if self.end_at <= self.start_at:
+            raise ValueError("dashboard_event_end_not_after_start")
+        return self
+
+
+class DashboardTaskSummary(BaseModel):
+    id: str
+    title: str
+    project_name: str | None = None
+    priority: DashboardTaskPriority
+    due_at: datetime | None = None
+    completed: bool
+
+    @field_validator("due_at")
+    @classmethod
+    def due_at_is_timezone_aware(cls, value: datetime | None):
+        if value is not None and value.tzinfo is None:
+            raise ValueError("dashboard_timestamps_must_be_timezone_aware")
+        return value
+
+
+class DashboardAttentionItem(BaseModel):
+    id: str
+    title: str
+    detail: str | None = None
+    severity: DashboardAttentionSeverity
+    source: DashboardAttentionSource
+
+
+class DashboardRecommendedAction(BaseModel):
+    title: str
+    detail: str | None = None
+    kind: DashboardRecommendedActionKind
+    related_id: str | None = None
+
+
+class TodayDashboardResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    generated_at: datetime
+    timezone: str
+    local_date: date
+    display_name: str | None = None
+    next_event: DashboardEventSummary | None = None
+    focus: DashboardTaskSummary | None = None
+    attention_items: list[DashboardAttentionItem] = Field(default_factory=list)
+    priority_tasks: list[DashboardTaskSummary] = Field(default_factory=list)
+    recommended_action: DashboardRecommendedAction | None = None
+
+    @field_validator("generated_at")
+    @classmethod
+    def generated_at_is_timezone_aware(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("dashboard_timestamps_must_be_timezone_aware")
+        return value
 
 
 class IntentType(StrEnum):

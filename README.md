@@ -20,6 +20,7 @@ Implemented today:
 - scheduling recommendations, Nextcloud event creation, and in-place updates;
 - duplicate prevention and lifecycle linkage using a Vikunja task marker.
 - a deterministic Daily Brief combining calendar, task, travel, weather, warning, and conflict data.
+- an authenticated, read-only native Today dashboard at `/api/v1/dashboard/today`.
 
 The scheduler creates at most one work block per task in the destination calendar. Later requests recalculate the best slot, ignore that block as a conflict, and update its existing CalDAV resource only when its bounds change. See the [Roadmap](docs/roadmap.md).
 
@@ -72,6 +73,7 @@ Endpoints:
 - `POST /v1/availability`
 - `POST /v1/schedule/task/{task_id}`
 - `GET /v1/brief/daily`
+- `GET /api/v1/dashboard/today`
 
 Authenticated endpoints require `X-Beacon-API-Key`. A minimum interaction is:
 
@@ -84,6 +86,7 @@ curl -sS http://localhost:8000/interact \
 ```
 
 See the [Interaction guide](docs/interaction.md) and [API reference](docs/api-reference.md).
+Native-client consumers should also read the [Today dashboard guide](docs/today-dashboard.md).
 The optional [Text conversation layer](docs/conversation.md) uses one model tool
 call, the same deterministic planner/executor, and the same model interaction to
 render authoritative results. The LLM never directly modifies external systems.

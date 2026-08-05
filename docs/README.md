@@ -11,6 +11,7 @@ Choose the path that matches what you are trying to do:
 - **Use Beacon from a terminal:** [CLI usage](../CLI_USAGE.md)
 - **Run or develop Beacon:** [Development](development.md)
 - **Call Beacon over HTTP:** [API reference](api-reference.md)
+- **Consume the native Today snapshot:** [Today dashboard](today-dashboard.md)
 - **Understand the system:** [Architecture](architecture.md)
 - **Understand natural-language intake:** [Interaction](interaction.md) and
   [Intake architecture](../INTAKE_ARCHITECTURE.md)
@@ -31,6 +32,7 @@ Choose the path that matches what you are trying to do:
 | [Scheduling](scheduling.md) | Exact Vikunja-task-to-Nextcloud-work-block lifecycle. |
 | [Availability engine](availability-engine.md) | Interval normalization, daily windows, candidate generation, scoring, and limitations. |
 | [Daily Brief](daily-brief.md) | Read-only calendar/task/weather/travel aggregation, warnings, conflicts, and summaries. |
+| [Today dashboard](today-dashboard.md) | Authenticated native-client schema, supported data, and null semantics. |
 | [Integrations](integrations.md) | Vikunja, Nextcloud/CalDAV, Waze, Home Assistant, and Gemini adapter contracts. |
 | [API reference](api-reference.md) | Authentication, endpoint payloads, success responses, and error mapping. |
 | [Data models](data-models.md) | Current Pydantic request/response fields and validation rules. |

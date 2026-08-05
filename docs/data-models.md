@@ -166,6 +166,15 @@ Contains integer counts `event_count`, `work_block_count`, `overdue_task_count`,
 | `summary` | `DailyBriefSummary` | Structured headline data. |
 | `spoken_summary` | `str` | Deterministic text, not synthesized audio. |
 
+## Native Today dashboard models
+
+`TodayDashboardResponse` is the explicit schema-version-1 native boundary.
+Its exact fields and enums are documented in the
+[Today dashboard guide](today-dashboard.md). Dashboard timestamps reject naive
+datetimes; event end must be strictly after event start. Provider numeric task
+IDs are serialized as strings, and a missing calendar UID receives a stable
+content-derived identifier.
+
 ## Interaction models
 
 `IntentType` includes `CREATE_CALENDAR_EVENTS` for fixed-time, bounded daily

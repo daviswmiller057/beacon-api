@@ -20,7 +20,7 @@ flowchart TD
 
     API --> INT["Legacy interaction boundary"]
     API --> CONV["Text ConversationService"]
-    API --> READ["Status / Daily Brief"]
+    API --> READ["Status / Daily Brief / Today dashboard"]
     API --> LOW["Availability / scheduling APIs"]
 
     INT --> IP["Rules or Gemini interpreter"]
@@ -73,6 +73,7 @@ without changing Beacon's business behavior.
 | `app.api.availability` | `/v1/availability` | API key | Explicit availability calculation. |
 | `app.api.scheduling` | `/v1/schedule/task/{task_id}` | API key | Explicit task scheduling lifecycle. |
 | `app.api.daily_brief` | `/v1/brief/daily` | API key | Versioned Daily Brief endpoint. |
+| `app.api.dashboard` | `/api/v1/dashboard/today` | API key | Read-only native Today snapshot. |
 
 Most legacy routes are synchronous; the conversation route is asynchronous for
 provider calls. Routes delegate to services and translate typed exceptions to
@@ -140,6 +141,8 @@ shared planner/executor entry point after both legacy and conversation intake.
   decisions.
 - `app/services/daily_brief.py`: read-only aggregation, task ordering, travel and
   overlap conflict detection, partial-failure warnings, and deterministic text.
+- `app/services/dashboard.py`: typed native-client projection over the
+  deterministic Daily Brief; it owns no provider calls or new decision rules.
 
 ### External adapters
 
@@ -211,6 +214,17 @@ GET /brief or GET /v1/brief/daily
   -> calendar events + Vikunja tasks
   -> optional Waze and Home Assistant reads
   -> deterministic groups, conflicts, warnings, summary
+  -> no mutations
+```
+
+### Native Today dashboard
+
+```text
+GET /api/v1/dashboard/today
+  -> TodayDashboardService
+  -> DailyBriefService
+  -> typed native-client projection of supported data
+  -> null/empty values for unsupported intelligence
   -> no mutations
 ```
 
